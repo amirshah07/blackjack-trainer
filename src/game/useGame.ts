@@ -1,16 +1,12 @@
 'use client';
 
-import { useReducer, useCallback, useEffect, useRef } from 'react';
+import { useReducer, useCallback, useEffect } from 'react';
 import { reducer, initialState } from './reducer';
-import { SPEED_MS, type Config, type Mode, type GameState, type Action } from './types';
+import { SPEED_MS, type Config, type Mode, type GameState, type GameAction, type Action } from './types';
 
 /**
- * Wraps the reducer with the things a reducer must not do: timers and
- * storage. The reducer stays a pure function of (state, action).
- *
- * Phase advance is driven here - after the player finishes, the seats, dealer
- * and settlement steps fire on a delay so the table animates rather than
- * resolving instantly.
+ * Wraps the reducer with the things a reducer must not do: timers and config
+ * plumbing. The reducer stays a pure function of (state, action).
  */
 export function useGame(mode: Mode, config: Config) {
   const [state, dispatch] = useReducer(
@@ -19,32 +15,51 @@ export function useGame(mode: Mode, config: Config) {
     () => initialState(mode, config),
   );
 
+  /**
+   * useReducer's initializer runs once, on mount. useSearchParams IS populated
+   * by then for a client component inside Suspense, so the config is correct
+   * from the start and needs no re-application.
+   *
+   * Re-configuring from an effect is deliberately avoided: CONFIGURE rebuilds
+   * the whole state (resetting the bankroll and the shoe), so any instability
+   * in the config's identity turns into an endless reset loop that prevents
+   * the page from ever settling.
+   */
+
   const delay = SPEED_MS[state.config.speed];
-  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
-  const clearTimers = useCallback(() => {
-    timers.current.forEach(clearTimeout);
-    timers.current = [];
-  }, []);
+  /**
+   * Drives the non-interactive phases forward on a timer.
+   *
+   * The dealing phase ticks once per card: the reducer holds a queue and
+   * places exactly one card per DEAL_CARD, so the table fills at a watchable
+   * pace rather than all at once.
+   *
+   * `step` increments on every state change the timer cares about, giving the
+   * effect a dependency that is stable when nothing happened but changes for
+   * each dealt card. Depending on `state` itself re-arms on unrelated updates;
+   * depending on phase alone stalls when a phase repeats.
+   */
+  // A plain value, derived from state - no ref mutation during render, which
+  // is an anti-pattern and misbehaves under StrictMode's double-invoke.
+  const tick = `${state.phase}:${state.dealQueue.length}:${state.handsPlayed}`;
 
-  const schedule = useCallback((fn: () => void, ms: number) => {
-    const t = setTimeout(fn, ms);
-    timers.current.push(t);
-  }, []);
-
-  // Drive the non-interactive phases forward on a timer.
   useEffect(() => {
-    if (state.phase === 'seatsTurn') {
-      schedule(() => dispatch({ type: 'PLAY_SEATS' }), delay);
-    } else if (state.phase === 'dealerTurn') {
-      schedule(() => dispatch({ type: 'DEALER_PLAY' }), delay);
-    } else if (state.phase === 'settlement') {
-      schedule(() => dispatch({ type: 'SETTLE' }), delay);
-    }
-  }, [state.phase, delay, schedule]);
+    const next: GameAction | null =
+      state.phase === 'dealing'    ? { type: 'DEAL_CARD' }   :
+      state.phase === 'seatsTurn'  ? { type: 'PLAY_SEATS' }  :
+      state.phase === 'dealerTurn' ? { type: 'DEALER_PLAY' } :
+      state.phase === 'settlement' ? { type: 'SETTLE' }      :
+      null;
 
-  // Drop pending timers on unmount so a stale dispatch can't fire.
-  useEffect(() => clearTimers, [clearTimers]);
+    if (!next) return;
+
+    // Exactly one timer outstanding; the cleanup cancels it so StrictMode's
+    // double-invoke cannot leave two chains running at different rates.
+    const t = setTimeout(() => dispatch(next), delay);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tick, delay]);
 
   const api = {
     newHand: useCallback(() => dispatch({ type: 'NEW_HAND' }), []),

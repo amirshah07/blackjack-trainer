@@ -7,17 +7,26 @@ export type Mode = 'basic' | 'counting' | 'live';
 
 export type Speed = 'slow' | 'medium' | 'fast';
 
-/** Milliseconds between dealt cards, per speed preset. */
+/**
+ * Milliseconds between individual cards, per speed preset.
+ *
+ * These pace ONE card at a time, not a whole round. At a 3-player table that
+ * is 10 cards per hand, so "medium" deals a hand over roughly 7 seconds -
+ * about the pace of a real dealer, and slow enough to actually keep a count.
+ */
 export const SPEED_MS: Record<Speed, number> = {
-  slow: 1200,
+  slow: 1100,
   medium: 700,
-  fast: 350,
+  fast: 420,
 };
+
+/** Pause between the end of one hand and the start of the next. */
+export const BETWEEN_HANDS_MS = 1400;
 
 export type Phase =
   | 'idle'        // pre-deal, or between hands
   | 'betting'     // live only: placing chips
-  | 'dealing'     // cards animating out
+  | 'dealing'     // opening cards going out one at a time
   | 'playerTurn'  // user acting on their hand(s)
   | 'seatsTurn'   // other seats auto-playing
   | 'dealerTurn'  // dealer drawing
@@ -47,6 +56,16 @@ export const MAX_HANDS = 4;
 /** Count check-ins fire at a random interval in this inclusive range. */
 export const CHECK_INTERVAL_MIN = 8;
 export const CHECK_INTERVAL_MAX = 15;
+
+/**
+ * One slot in the opening deal. The table is dealt a card at a time, in
+ * casino order (each seat, then the user, then the dealer; twice round), so
+ * a counter can actually follow the cards.
+ */
+export type DealTarget =
+  | { kind: 'seat'; seatId: number }
+  | { kind: 'player' }
+  | { kind: 'dealer'; hole: boolean };
 
 export type HandStatus = 'active' | 'stood' | 'bust' | 'blackjack' | 'doubled';
 
@@ -99,6 +118,8 @@ export type GameState = {
 
   playerHands: Hand[];
   activeHandIndex: number;
+  /** Remaining cards of the opening deal, consumed one per DEAL_CARD. */
+  dealQueue: DealTarget[];
   seats: Seat[];
   dealerHand: Hand;
   /** Dealer's hole card stays hidden until the dealer's turn. */
@@ -128,6 +149,7 @@ export type GameAction =
   | { type: 'PLACE_BET'; amount: number }
   | { type: 'CLEAR_BET' }
   | { type: 'NEW_HAND' }
+  | { type: 'DEAL_CARD' }
   | { type: 'PLAYER_ACTION'; action: Action }
   | { type: 'PLAY_SEATS' }
   | { type: 'DEALER_PLAY' }

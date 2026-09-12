@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { handLabel, legalActions, canDeal, dealerVisibleLabel } from './selectors';
-import { initialState, createReducer } from './reducer';
+import { initialState, createReducer, completeDeal } from './reducer';
 import { DEFAULT_CONFIG, emptyHand, MIN_BET, type GameState, type Hand } from './types';
 import type { Card, Rank } from '@/domain/cards';
 
@@ -131,7 +131,7 @@ describe('dealer label never leaks the hole card', () => {
     const reduce = createReducer(rng(21));
     let s = initialState('basic', DEFAULT_CONFIG, rng(21));
     for (let i = 0; i < 20; i++) {
-      s = reduce(s, { type: 'NEW_HAND' });
+      s = completeDeal(reduce(s, { type: 'NEW_HAND' }), reduce);
       if (s.phase === 'playerTurn' && !s.holeCardRevealed) {
         const shown = dealerVisibleLabel(s);
         const upcardOnly = handLabel({ ...s.dealerHand, cards: [s.dealerHand.cards[0]] });

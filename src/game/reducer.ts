@@ -8,6 +8,7 @@ import {
   emptyHand, DEFAULT_CONFIG, STARTING_BANKROLL, MIN_BET, MAX_HANDS,
   CHECK_INTERVAL_MIN, CHECK_INTERVAL_MAX,
   type GameState, type GameAction, type Hand, type Seat, type Config, type Mode,
+  type DealTarget,
 } from './types';
 import type { Card } from '@/domain/cards';
 import type { Shoe } from '@/domain/deck';
@@ -35,6 +36,7 @@ export function initialState(
     pendingReshuffle: false,
     playerHands: [],
     activeHandIndex: 0,
+    dealQueue: [],
     seats: Array.from({ length: config.numOtherPlayers }, (_, i) => ({ id: i, hands: [] })),
     dealerHand: emptyHand(),
     holeCardRevealed: false,
@@ -123,6 +125,27 @@ function advanceHand(state: GameState): GameState {
   return { ...state, phase: anyLive ? 'seatsTurn' : 'dealerTurn' };
 }
 
+/**
+ * Builds the opening deal order: one card at a time, each seat left to right,
+ * then the user, then the dealer - twice round, as at a real table.
+ *
+ * The dealer's second card is the hole card and stays uncounted until reveal.
+ */
+function buildDealQueue(seatIds: number[]): DealTarget[] {
+  const queue: DealTarget[] = [];
+  for (let round = 0; round < 2; round++) {
+    for (const seatId of seatIds) queue.push({ kind: 'seat', seatId });
+    queue.push({ kind: 'player' });
+    queue.push({ kind: 'dealer', hole: round === 1 });
+  }
+  return queue;
+}
+
+/**
+ * Starts a hand: reshuffles if needed, clears the table, and queues the
+ * opening deal. Deliberately deals NO cards - they go out one per DEAL_CARD
+ * so the pace is watchable and a counter can follow along.
+ */
 function startNewHand(state: GameState, rng: Rng): GameState {
   // Reshuffle at the cut card before dealing, never mid-hand.
   let shoe = state.shoe;
@@ -139,51 +162,6 @@ function startNewHand(state: GameState, rng: Rng): GameState {
   if (state.mode === 'live' && bet < MIN_BET) return state; // must bet first
 
   const seats: Seat[] = state.seats.map((s) => ({ ...s, hands: [emptyHand()] }));
-  let player: Hand = { ...emptyHand(bet) };
-  let dealer: Hand = emptyHand();
-
-  // Two rounds, dealt left to right: seats, then user, then dealer - as at a
-  // real table. The dealer's second card is the hole card and stays uncounted.
-  for (let round = 0; round < 2; round++) {
-    for (const seat of seats) {
-      const r = dealCounted(shoe, running, rng);
-      shoe = r.shoe; running = r.running;
-      seat.hands[0] = { ...seat.hands[0], cards: [...seat.hands[0].cards, r.card] };
-    }
-
-    const p = dealCounted(shoe, running, rng);
-    shoe = p.shoe; running = p.running;
-    player = { ...player, cards: [...player.cards, p.card] };
-
-    if (round === 0) {
-      const d = dealCounted(shoe, running, rng);
-      shoe = d.shoe; running = d.running;
-      dealer = { ...dealer, cards: [...dealer.cards, d.card] };
-    } else {
-      const d = dealHidden(shoe, rng); // hole card - counted on reveal
-      shoe = d.shoe;
-      dealer = { ...dealer, cards: [...dealer.cards, d.card] };
-    }
-  }
-
-  const playerHand = restatus(player);
-  const dealerBJ = isBlackjack(dealer.cards);
-
-  // A natural on either side ends the hand immediately.
-  const immediate = playerHand.status === 'blackjack' || dealerBJ;
-
-  // Counting mode is a pure observation drill: the user makes no play
-  // decisions, so their seat auto-plays with the others and the hand flows
-  // straight through to the seats phase.
-  const skipPlayerTurn = state.mode === 'counting';
-
-  /**
-   * A natural on either side ends the hand before anyone acts. Nobody gets a
-   * turn, so PLAY_SEATS never runs - close out every hand here instead, or the
-   * table is left showing seats frozen mid-hand.
-   */
-  const closeOut = (h: Hand): Hand =>
-    h.status === 'active' ? { ...h, status: 'stood' } : h;
 
   return {
     ...state,
@@ -191,21 +169,98 @@ function startNewHand(state: GameState, rng: Rng): GameState {
     discardCount,
     runningCount: running,
     pendingReshuffle: false,
-    playerHands: [immediate ? closeOut(playerHand) : playerHand],
+    playerHands: [emptyHand(bet)],
     activeHandIndex: 0,
+    seats,
+    dealerHand: emptyHand(),
+    holeCardRevealed: false,
+    dealQueue: buildDealQueue(seats.map((s) => s.id)),
+    phase: 'dealing',
+    lastDecision: null,
+    lastCountCheck: null,
+  };
+}
+
+/**
+ * Places exactly one card from the opening deal.
+ *
+ * When the queue empties this resolves the hand's opening state: naturals,
+ * whose turn it is, and - on a natural - closing out every hand, since nobody
+ * gets to act.
+ */
+function dealOneCard(state: GameState, rng: Rng): GameState {
+  const [target, ...rest] = state.dealQueue;
+  if (!target) return state;
+
+  const hidden = target.kind === 'dealer' && target.hole;
+  let shoe = state.shoe;
+  let running = state.runningCount;
+  let card: Card;
+
+  if (hidden) {
+    const d = dealHidden(shoe, rng);
+    card = d.card;
+    shoe = d.shoe;
+  } else {
+    const d = dealCounted(shoe, running, rng);
+    card = d.card;
+    shoe = d.shoe;
+    running = d.running;
+  }
+
+  let seats = state.seats;
+  let playerHands = state.playerHands;
+  let dealerHand = state.dealerHand;
+
+  if (target.kind === 'seat') {
+    seats = seats.map((s) =>
+      s.id === target.seatId
+        ? { ...s, hands: [{ ...s.hands[0], cards: [...s.hands[0].cards, card] }] }
+        : s,
+    );
+  } else if (target.kind === 'player') {
+    playerHands = [{ ...playerHands[0], cards: [...playerHands[0].cards, card] }];
+  } else {
+    dealerHand = { ...dealerHand, cards: [...dealerHand.cards, card] };
+  }
+
+  // More cards still to come - stay in the dealing phase.
+  if (rest.length > 0) {
+    return { ...state, shoe, runningCount: running, seats, playerHands, dealerHand, dealQueue: rest };
+  }
+
+  // Opening deal complete: resolve naturals and hand over the turn.
+  const playerHand = restatus(playerHands[0]);
+  const dealerBJ = isBlackjack(dealerHand.cards);
+  const immediate = playerHand.status === 'blackjack' || dealerBJ;
+
+  // Counting mode is a pure observation drill: the user makes no play
+  // decisions, so their seat auto-plays with the others.
+  const skipPlayerTurn = state.mode === 'counting';
+
+  /**
+   * A natural ends the hand before anyone acts, so PLAY_SEATS never runs.
+   * Close out every hand here or the table shows seats frozen mid-hand.
+   */
+  const closeOut = (h: Hand): Hand =>
+    h.status === 'active' ? { ...h, status: 'stood' } : h;
+
+  return {
+    ...state,
+    shoe,
+    // The hole card joins the count the moment a natural turns it face up.
+    runningCount: immediate
+      ? updateRunningCount(running, [dealerHand.cards[1]])
+      : running,
     seats: seats.map((s) => ({
       ...s,
       hands: s.hands.map((h) => (immediate ? closeOut(restatus(h)) : restatus(h))),
     })),
-    dealerHand: dealer,
+    playerHands: [immediate ? closeOut(playerHand) : playerHand],
+    dealerHand,
     holeCardRevealed: immediate,
-    // Reveal counts the hole card the moment it turns face up.
-    ...(immediate
-      ? { runningCount: updateRunningCount(running, [dealer.cards[1]]) }
-      : {}),
+    dealQueue: [],
     phase: immediate ? 'dealerTurn' : skipPlayerTurn ? 'seatsTurn' : 'playerTurn',
-    lastDecision: null,
-    lastCountCheck: null,
   };
 }
 
@@ -496,6 +551,24 @@ function submitCount(state: GameState, guess: number, rng: Rng): GameState {
   };
 }
 
+/**
+ * Drains the opening deal in one go.
+ *
+ * The UI deals a card at a time so the pace is watchable, but tests and any
+ * caller that does not care about the animation can settle the table at once.
+ */
+export function completeDeal(
+  state: GameState,
+  reduce: (s: GameState, a: GameAction) => GameState,
+): GameState {
+  let s = state;
+  let guard = 0;
+  while (s.phase === 'dealing' && guard++ < 64) {
+    s = reduce(s, { type: 'DEAL_CARD' });
+  }
+  return s;
+}
+
 export function createReducer(rng: Rng = Math.random) {
   return function reducer(state: GameState, action: GameAction): GameState {
     switch (action.type) {
@@ -515,6 +588,9 @@ export function createReducer(rng: Rng = Math.random) {
 
       case 'NEW_HAND':
         return startNewHand(state, rng);
+
+      case 'DEAL_CARD':
+        return state.phase === 'dealing' ? dealOneCard(state, rng) : state;
 
       case 'PLAYER_ACTION':
         return state.phase === 'playerTurn'

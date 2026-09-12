@@ -9,7 +9,7 @@ import { Toast } from '@/components/Toast';
 import { StatsPanel } from '@/components/StatsPanel';
 import { TableFrame } from '@/components/TableFrame';
 import { CountCheckModal } from '@/components/CountCheckModal';
-import { SPEED_MS } from '@/game/types';
+import { BETWEEN_HANDS_MS } from '@/game/types';
 
 export function CardCountingGame() {
   const config = useConfig();
@@ -29,24 +29,29 @@ export function CardCountingGame() {
   }, [check]);
 
   /**
-   * Auto-deal loop. The drill runs continuously - cards keep coming at the
-   * configured speed until a check-in pauses it or the user stops.
+   * Auto-deal loop. The drill runs continuously: each hand's cards go out one
+   * at a time (paced by useGame), and this just starts the next hand after a
+   * short breather.
    */
-  const dealDelay = SPEED_MS[config.speed] * 2;
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * `game` is a fresh object every render, so it must not be an effect
+   * dependency - the timer would be cleared and re-armed on every render and
+   * never fire cleanly. Hold the current newHand in a ref instead.
+   */
+  const newHand = game.newHand;
+  const newHandRef = useRef(newHand);
+  useEffect(() => { newHandRef.current = newHand; }, [newHand]);
 
   useEffect(() => {
     if (!running) return;
-    // Only start the next hand from a terminal phase; the useGame hook drives
-    // the seats/dealer/settlement steps on its own timers.
+    // Only start the next hand from a terminal phase; useGame drives the
+    // dealing/seats/dealer/settlement steps on its own timer.
     const terminal = state.phase === 'idle' || state.phase === 'resolved';
     if (!terminal) return;
 
-    timer.current = setTimeout(() => game.newHand(), dealDelay);
-    return () => {
-      if (timer.current) clearTimeout(timer.current);
-    };
-  }, [running, state.phase, state.handsPlayed, dealDelay, game]);
+    const t = setTimeout(() => newHandRef.current(), BETWEEN_HANDS_MS);
+    return () => clearTimeout(t);
+  }, [running, state.phase, state.handsPlayed]);
 
   // A check-in interrupts the loop until it is answered.
   const paused = state.phase === 'countCheck';

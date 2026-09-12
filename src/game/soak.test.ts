@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createReducer, initialState } from './reducer';
+import { createReducer, initialState, completeDeal } from './reducer';
 import { DEFAULT_CONFIG, MIN_BET, type GameState, type Mode } from './types';
 import { CARDS_PER_DECK } from '@/domain/deck';
 
@@ -24,7 +24,7 @@ function soak(mode: Mode, numDecks: number, numOtherPlayers: number, seed: numbe
       s = reduce(s, { type: 'PLACE_BET', amount: MIN_BET });
     }
 
-    s = reduce(s, { type: 'NEW_HAND' });
+    s = completeDeal(reduce(s, { type: 'NEW_HAND' }), reduce);
 
     let guard = 0;
     while (s.phase === 'playerTurn' && guard++ < 30) {
@@ -102,7 +102,7 @@ describe('soak - state machine stability', () => {
     let checks = 0;
 
     for (let i = 0; i < 100; i++) {
-      s = reduce(s, { type: 'NEW_HAND' });
+      s = completeDeal(reduce(s, { type: 'NEW_HAND' }), reduce);
       let g = 0;
       while (s.phase === 'playerTurn' && g++ < 30) s = reduce(s, { type: 'PLAYER_ACTION', action: 'stand' });
       if (s.phase === 'seatsTurn') s = reduce(s, { type: 'PLAY_SEATS' });

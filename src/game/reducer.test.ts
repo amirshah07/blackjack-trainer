@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createReducer, initialState } from './reducer';
+import { createReducer, initialState, completeDeal } from './reducer';
 import { DEFAULT_CONFIG, MIN_BET, STARTING_BANKROLL, type GameState, type GameAction } from './types';
 import { runningCount } from '@/domain/counting';
 import { canDeal } from './selectors';
@@ -20,7 +20,7 @@ function run(state: GameState, ...actions: GameAction[]): GameState {
 
 /** Plays one hand to completion, standing immediately on every player hand. */
 function playHandStanding(state: GameState): GameState {
-  let s = reduce(state, { type: 'NEW_HAND' });
+  let s = completeDeal(reduce(state, { type: 'NEW_HAND' }), reduce);
   let guard = 0;
   while (s.phase === 'playerTurn' && guard++ < 20) {
     s = reduce(s, { type: 'PLAYER_ACTION', action: 'stand' });
@@ -51,7 +51,7 @@ describe('initialState', () => {
 
 describe('NEW_HAND', () => {
   it('deals two cards to every seat, the user, and the dealer', () => {
-    const s = reduce(initialState('basic', DEFAULT_CONFIG, seededRng()), { type: 'NEW_HAND' });
+    const s = completeDeal(reduce(initialState('basic', DEFAULT_CONFIG, seededRng()), { type: 'NEW_HAND' }), reduce);
     expect(s.playerHands[0].cards).toHaveLength(2);
     expect(s.dealerHand.cards).toHaveLength(2);
     for (const seat of s.seats) expect(seat.hands[0].cards).toHaveLength(2);
@@ -59,14 +59,14 @@ describe('NEW_HAND', () => {
 
   it('consumes exactly the cards it dealt', () => {
     const init = initialState('basic', { ...DEFAULT_CONFIG, numOtherPlayers: 3 }, seededRng());
-    const s = reduce(init, { type: 'NEW_HAND' });
+    const s = completeDeal(reduce(init, { type: 'NEW_HAND' }), reduce);
     const expected = (3 + 1 + 1) * 2; // seats + user + dealer, two rounds
     expect(init.shoe.cards.length - s.shoe.cards.length).toBe(expected);
   });
 
   it('counts every visible card but NOT the hole card', () => {
     const init = initialState('basic', DEFAULT_CONFIG, seededRng());
-    const s = reduce(init, { type: 'NEW_HAND' });
+    const s = completeDeal(reduce(init, { type: 'NEW_HAND' }), reduce);
 
     const visible = [
       ...s.seats.flatMap((x) => x.hands.flatMap((h) => h.cards)),
@@ -85,7 +85,7 @@ describe('NEW_HAND', () => {
     let reached = false;
     let s = initialState('basic', DEFAULT_CONFIG, seededRng());
     for (let i = 0; i < 10; i++) {
-      s = reduce(s, { type: 'NEW_HAND' });
+      s = completeDeal(reduce(s, { type: 'NEW_HAND' }), reduce);
       if (s.phase === 'playerTurn') {
         expect(s.holeCardRevealed).toBe(false);
         reached = true; return;
@@ -102,7 +102,7 @@ describe('player actions', () => {
     let s = initialState('basic', DEFAULT_CONFIG, seededRng());
     // find a hand that can safely take a card
     for (let i = 0; i < 40; i++) {
-      s = reduce(s, { type: 'NEW_HAND' });
+      s = completeDeal(reduce(s, { type: 'NEW_HAND' }), reduce);
       if (s.phase === 'playerTurn' && handValue(s.playerHands[0].cards).total <= 8) {
         const before = s.playerHands[0].cards.length;
         const after = reduce(s, { type: 'PLAYER_ACTION', action: 'hit' });
@@ -116,7 +116,7 @@ describe('player actions', () => {
 
   it('stand ends the hand and advances the phase', () => {
     let s = initialState('basic', DEFAULT_CONFIG, seededRng());
-    s = reduce(s, { type: 'NEW_HAND' });
+    s = completeDeal(reduce(s, { type: 'NEW_HAND' }), reduce);
     if (s.phase !== 'playerTurn') return;
     const after = reduce(s, { type: 'PLAYER_ACTION', action: 'stand' });
     expect(after.playerHands[0].status).toBe('stood');
@@ -133,7 +133,7 @@ describe('player actions', () => {
 describe('basic strategy evaluation', () => {
   it('records a verdict on every action in basic mode', () => {
     let s = initialState('basic', DEFAULT_CONFIG, seededRng());
-    s = reduce(s, { type: 'NEW_HAND' });
+    s = completeDeal(reduce(s, { type: 'NEW_HAND' }), reduce);
     if (s.phase !== 'playerTurn') return;
     const after = reduce(s, { type: 'PLAYER_ACTION', action: 'stand' });
     expect(after.lastDecision).not.toBeNull();
@@ -144,7 +144,7 @@ describe('basic strategy evaluation', () => {
     let reached = false;
     let s = initialState('basic', DEFAULT_CONFIG, seededRng());
     for (let i = 0; i < 40; i++) {
-      s = reduce(s, { type: 'NEW_HAND' });
+      s = completeDeal(reduce(s, { type: 'NEW_HAND' }), reduce);
       if (s.phase === 'playerTurn' && handValue(s.playerHands[0].cards).total <= 8) {
         // Standing on 8 or less is always wrong.
         const after = reduce(s, { type: 'PLAYER_ACTION', action: 'stand' });
@@ -161,7 +161,7 @@ describe('basic strategy evaluation', () => {
     for (const mode of ['counting', 'live'] as const) {
       let s = initialState(mode, DEFAULT_CONFIG, seededRng());
       if (mode === 'live') s = reduce(s, { type: 'PLACE_BET', amount: MIN_BET });
-      s = reduce(s, { type: 'NEW_HAND' });
+      s = completeDeal(reduce(s, { type: 'NEW_HAND' }), reduce);
       if (s.phase !== 'playerTurn') continue;
       const after = reduce(s, { type: 'PLAYER_ACTION', action: 'stand' });
       expect(after.lastDecision).toBeNull();
@@ -172,7 +172,7 @@ describe('basic strategy evaluation', () => {
 describe('dealer play', () => {
   it('reveals the hole card and counts it exactly once', () => {
     let s = initialState('basic', DEFAULT_CONFIG, seededRng());
-    s = reduce(s, { type: 'NEW_HAND' });
+    s = completeDeal(reduce(s, { type: 'NEW_HAND' }), reduce);
     while (s.phase === 'playerTurn') s = reduce(s, { type: 'PLAYER_ACTION', action: 'stand' });
     if (s.phase === 'seatsTurn') s = reduce(s, { type: 'PLAY_SEATS' });
 
@@ -374,7 +374,7 @@ describe('idempotent settlement (regression)', () => {
   it('does not apply settlement twice', () => {
     let s = initialState('live', DEFAULT_CONFIG, seededRng());
     s = reduce(s, { type: 'PLACE_BET', amount: 100 });
-    s = reduce(s, { type: 'NEW_HAND' });
+    s = completeDeal(reduce(s, { type: 'NEW_HAND' }), reduce);
     while (s.phase === 'playerTurn') s = reduce(s, { type: 'PLAYER_ACTION', action: 'stand' });
     if (s.phase === 'seatsTurn') s = reduce(s, { type: 'PLAY_SEATS' });
     if (s.phase === 'dealerTurn') s = reduce(s, { type: 'DEALER_PLAY' });
@@ -397,7 +397,7 @@ describe('splitting', () => {
     let s = initialState(mode, DEFAULT_CONFIG, seededRng(seed));
     for (let i = 0; i < 200; i++) {
       if (mode === 'live') s = r(s, { type: 'PLACE_BET', amount: 100 });
-      s = r(s, { type: 'NEW_HAND' });
+      s = completeDeal(r(s, { type: 'NEW_HAND' }), r);
       if (s.phase === 'playerTurn') {
         const [a, b] = s.playerHands[0].cards;
         if (a && b && handValue([a]).total === handValue([b]).total) return s;
@@ -448,7 +448,7 @@ describe('splitting', () => {
     let reached = false;
     let s = initialState('basic', DEFAULT_CONFIG, seededRng(9));
     for (let i = 0; i < 50; i++) {
-      s = reduce(s, { type: 'NEW_HAND' });
+      s = completeDeal(reduce(s, { type: 'NEW_HAND' }), reduce);
       if (s.phase === 'playerTurn') {
         const [a, b] = s.playerHands[0].cards;
         if (handValue([a]).total !== handValue([b]).total) {
@@ -469,7 +469,7 @@ describe('doubling', () => {
     let s = initialState('live', DEFAULT_CONFIG, seededRng(13));
     for (let i = 0; i < 50; i++) {
       s = reduce(s, { type: 'PLACE_BET', amount: 100 });
-      s = reduce(s, { type: 'NEW_HAND' });
+      s = completeDeal(reduce(s, { type: 'NEW_HAND' }), reduce);
       if (s.phase === 'playerTurn' && s.playerHands[0].cards.length === 2) {
         const bankrollBefore = s.bankroll;
         const after = reduce(s, { type: 'PLAYER_ACTION', action: 'double' });
@@ -488,7 +488,7 @@ describe('doubling', () => {
     let reached = false;
     let s = initialState('basic', DEFAULT_CONFIG, seededRng(17));
     for (let i = 0; i < 50; i++) {
-      s = reduce(s, { type: 'NEW_HAND' });
+      s = completeDeal(reduce(s, { type: 'NEW_HAND' }), reduce);
       if (s.phase === 'playerTurn' && handValue(s.playerHands[0].cards).total <= 8) {
         const hit = reduce(s, { type: 'PLAYER_ACTION', action: 'hit' });
         if (hit.phase === 'playerTurn' && hit.playerHands[0].cards.length === 3) {
@@ -508,7 +508,7 @@ describe('counting mode auto-plays the user seat', () => {
     const r = createReducer(seededRng(31));
     let s = initialState('counting', DEFAULT_CONFIG, seededRng(31));
     for (let i = 0; i < 30; i++) {
-      s = r(s, { type: 'NEW_HAND' });
+      s = completeDeal(r(s, { type: 'NEW_HAND' }), r);
       expect(s.phase, `entered playerTurn on hand ${i}`).not.toBe('playerTurn');
       if (s.phase === 'seatsTurn') s = r(s, { type: 'PLAY_SEATS' });
       if (s.phase === 'dealerTurn') s = r(s, { type: 'DEALER_PLAY' });
@@ -521,7 +521,7 @@ describe('counting mode auto-plays the user seat', () => {
     const r = createReducer(seededRng(33));
     let s = initialState('counting', DEFAULT_CONFIG, seededRng(33));
     for (let i = 0; i < 20; i++) {
-      s = r(s, { type: 'NEW_HAND' });
+      s = completeDeal(r(s, { type: 'NEW_HAND' }), r);
       if (s.phase === 'seatsTurn') s = r(s, { type: 'PLAY_SEATS' });
       // After the seats phase the user's hand must be finished, not active.
       for (const h of s.playerHands) {
@@ -536,7 +536,7 @@ describe('counting mode auto-plays the user seat', () => {
   it('still settles outcomes for the auto-played hand', () => {
     const r = createReducer(seededRng(35));
     let s = initialState('counting', DEFAULT_CONFIG, seededRng(35));
-    s = r(s, { type: 'NEW_HAND' });
+    s = completeDeal(r(s, { type: 'NEW_HAND' }), r);
     if (s.phase === 'seatsTurn') s = r(s, { type: 'PLAY_SEATS' });
     if (s.phase === 'dealerTurn') s = r(s, { type: 'DEALER_PLAY' });
     if (s.phase === 'settlement') s = r(s, { type: 'SETTLE' });
@@ -552,7 +552,7 @@ describe('counting mode auto-plays the user seat', () => {
       let sawPlayerTurn = false;
       for (let i = 0; i < 15 && !sawPlayerTurn; i++) {
         if (mode === 'live') s = r(s, { type: 'PLACE_BET', amount: MIN_BET });
-        s = r(s, { type: 'NEW_HAND' });
+        s = completeDeal(r(s, { type: 'NEW_HAND' }), r);
         if (s.phase === 'playerTurn') { sawPlayerTurn = true; break; }
         if (s.phase === 'seatsTurn') s = r(s, { type: 'PLAY_SEATS' });
         if (s.phase === 'dealerTurn') s = r(s, { type: 'DEALER_PLAY' });
@@ -575,7 +575,7 @@ describe('naturals close out every hand (regression)', () => {
 
       for (let i = 0; i < 60; i++) {
         if (mode === 'live') s = r(s, { type: 'PLACE_BET', amount: MIN_BET });
-        s = r(s, { type: 'NEW_HAND' });
+        s = completeDeal(r(s, { type: 'NEW_HAND' }), r);
 
         if (s.phase === 'dealerTurn' && s.holeCardRevealed) {
           sawNatural = true;
@@ -613,7 +613,7 @@ describe('count check breakdown is self-consistent (regression)', () => {
     let checked = 0;
 
     for (let i = 0; i < 120 && checked < 5; i++) {
-      s = r(s, { type: 'NEW_HAND' });
+      s = completeDeal(r(s, { type: 'NEW_HAND' }), r);
       if (s.phase === 'seatsTurn') s = r(s, { type: 'PLAY_SEATS' });
       if (s.phase === 'dealerTurn') s = r(s, { type: 'DEALER_PLAY' });
       if (s.phase === 'settlement') s = r(s, { type: 'SETTLE' });
@@ -634,7 +634,7 @@ describe('count check breakdown is self-consistent (regression)', () => {
     let s = initialState('counting', DEFAULT_CONFIG, seededRng(79));
 
     for (let i = 0; i < 120; i++) {
-      s = r(s, { type: 'NEW_HAND' });
+      s = completeDeal(r(s, { type: 'NEW_HAND' }), r);
       if (s.phase === 'seatsTurn') s = r(s, { type: 'PLAY_SEATS' });
       if (s.phase === 'dealerTurn') s = r(s, { type: 'DEALER_PLAY' });
       if (s.phase === 'settlement') s = r(s, { type: 'SETTLE' });
@@ -661,7 +661,7 @@ describe('live mode hand-to-hand flow', () => {
       s = r(s, { type: 'PLACE_BET', amount: 25 });
       expect(canDeal(s), `bet placed but cannot deal on hand ${i}`).toBe(true);
 
-      s = r(s, { type: 'NEW_HAND' });
+      s = completeDeal(r(s, { type: 'NEW_HAND' }), r);
       while (s.phase === 'playerTurn') s = r(s, { type: 'PLAYER_ACTION', action: 'stand' });
       if (s.phase === 'seatsTurn') s = r(s, { type: 'PLAY_SEATS' });
       if (s.phase === 'dealerTurn') s = r(s, { type: 'DEALER_PLAY' });
@@ -681,7 +681,7 @@ describe('live mode hand-to-hand flow', () => {
       const staked = 100;
       const before = s.bankroll;
       s = r(s, { type: 'PLACE_BET', amount: staked });
-      s = r(s, { type: 'NEW_HAND' });
+      s = completeDeal(r(s, { type: 'NEW_HAND' }), r);
 
       const gotBJ = s.playerHands[0]?.status === 'blackjack';
       while (s.phase === 'playerTurn') s = r(s, { type: 'PLAYER_ACTION', action: 'stand' });
@@ -705,7 +705,7 @@ describe('live mode hand-to-hand flow', () => {
     for (let i = 0; i < 60 && !s.busted; i++) {
       s = r(s, { type: 'PLACE_BET', amount: s.bankroll });
       if (s.currentBet < MIN_BET) break;
-      s = r(s, { type: 'NEW_HAND' });
+      s = completeDeal(r(s, { type: 'NEW_HAND' }), r);
       while (s.phase === 'playerTurn') s = r(s, { type: 'PLAYER_ACTION', action: 'stand' });
       if (s.phase === 'seatsTurn') s = r(s, { type: 'PLAY_SEATS' });
       if (s.phase === 'dealerTurn') s = r(s, { type: 'DEALER_PLAY' });
@@ -724,7 +724,7 @@ describe('live mode hand-to-hand flow', () => {
       const bet = Math.min(50, s.bankroll);
       if (bet < MIN_BET) break;
       s = r(s, { type: 'PLACE_BET', amount: bet });
-      s = r(s, { type: 'NEW_HAND' });
+      s = completeDeal(r(s, { type: 'NEW_HAND' }), r);
       let g = 0;
       while (s.phase === 'playerTurn' && g++ < 20) {
         const act = i % 4 === 0 ? 'double' : i % 4 === 1 ? 'split' : 'stand';
@@ -745,7 +745,7 @@ describe('live mode hand-to-hand flow', () => {
     let s = initialState('live', DEFAULT_CONFIG, seededRng(59));
     for (let i = 0; i < 40 && !s.busted; i++) {
       s = r(s, { type: 'PLACE_BET', amount: MIN_BET });
-      s = r(s, { type: 'NEW_HAND' });
+      s = completeDeal(r(s, { type: 'NEW_HAND' }), r);
       while (s.phase === 'playerTurn') s = r(s, { type: 'PLAYER_ACTION', action: 'stand' });
       if (s.phase === 'seatsTurn') s = r(s, { type: 'PLAY_SEATS' });
       if (s.phase === 'dealerTurn') s = r(s, { type: 'DEALER_PLAY' });
@@ -756,5 +756,97 @@ describe('live mode hand-to-hand flow', () => {
       expect(s.lastDecision, 'live mode recorded a strategy verdict').toBeNull();
       expect(s.lastCountCheck, 'live mode recorded a count check').toBeNull();
     }
+  });
+});
+
+describe('incremental dealing', () => {
+  it('deals no cards on NEW_HAND - only queues them', () => {
+    const s = reduce(initialState('basic', DEFAULT_CONFIG, seededRng()), { type: 'NEW_HAND' });
+    expect(s.phase).toBe('dealing');
+    expect(s.playerHands[0].cards).toHaveLength(0);
+    expect(s.dealerHand.cards).toHaveLength(0);
+    for (const seat of s.seats) expect(seat.hands[0].cards).toHaveLength(0);
+  });
+
+  it('queues one card per seat per round, in table order', () => {
+    const s = reduce(
+      initialState('basic', { ...DEFAULT_CONFIG, numOtherPlayers: 3 }, seededRng()),
+      { type: 'NEW_HAND' },
+    );
+    // 3 seats + user + dealer, twice round.
+    expect(s.dealQueue).toHaveLength((3 + 1 + 1) * 2);
+
+    const kinds = s.dealQueue.map((t) => t.kind);
+    expect(kinds.slice(0, 5)).toEqual(['seat', 'seat', 'seat', 'player', 'dealer']);
+    expect(kinds.slice(5)).toEqual(['seat', 'seat', 'seat', 'player', 'dealer']);
+  });
+
+  it('places exactly one card per DEAL_CARD', () => {
+    let s = reduce(initialState('basic', DEFAULT_CONFIG, seededRng()), { type: 'NEW_HAND' });
+    const total = s.dealQueue.length;
+
+    for (let i = 1; i <= total; i++) {
+      s = reduce(s, { type: 'DEAL_CARD' });
+      const onTable =
+        s.seats.reduce((n, seat) => n + seat.hands[0].cards.length, 0) +
+        s.playerHands[0].cards.length +
+        s.dealerHand.cards.length;
+      expect(onTable, `after ${i} DEAL_CARD dispatches`).toBe(i);
+    }
+    expect(s.dealQueue).toHaveLength(0);
+    expect(s.phase).not.toBe('dealing');
+  });
+
+  it('marks only the dealer hole card as the second dealer card', () => {
+    const s = reduce(initialState('basic', DEFAULT_CONFIG, seededRng()), { type: 'NEW_HAND' });
+    const dealerSlots = s.dealQueue.filter((t) => t.kind === 'dealer');
+    expect(dealerSlots).toHaveLength(2);
+    expect(dealerSlots[0]).toEqual({ kind: 'dealer', hole: false });
+    expect(dealerSlots[1]).toEqual({ kind: 'dealer', hole: true });
+  });
+
+  it('does not count the hole card while it is face down', () => {
+    let s = initialState('basic', DEFAULT_CONFIG, seededRng());
+    for (let i = 0; i < 10; i++) {
+      s = completeDeal(reduce(s, { type: 'NEW_HAND' }), reduce);
+      if (s.phase === 'playerTurn') {
+        const visible = [
+          ...s.seats.flatMap((x) => x.hands.flatMap((h) => h.cards)),
+          ...s.playerHands.flatMap((h) => h.cards),
+          s.dealerHand.cards[0],
+        ];
+        expect(s.runningCount).toBe(runningCount(visible));
+        return;
+      }
+      s = playHandStanding(s);
+    }
+  });
+
+  it('ignores DEAL_CARD outside the dealing phase', () => {
+    const idle = initialState('basic', DEFAULT_CONFIG, seededRng());
+    expect(reduce(idle, { type: 'DEAL_CARD' })).toBe(idle);
+  });
+
+  it('deals the same cards regardless of pacing', () => {
+    // Drip-fed and drained-at-once must produce an identical table.
+    const a = createReducer(seededRng(101));
+    const b = createReducer(seededRng(101));
+
+    let sa = a(initialState('basic', DEFAULT_CONFIG, seededRng(101)), { type: 'NEW_HAND' });
+    while (sa.phase === 'dealing') sa = a(sa, { type: 'DEAL_CARD' });
+
+    const sb = completeDeal(
+      b(initialState('basic', DEFAULT_CONFIG, seededRng(101)), { type: 'NEW_HAND' }),
+      b,
+    );
+
+    // Compare rank/suit, not ids: every shoe carries a unique serial prefix,
+    // so two separately-created shoes never share card ids by design.
+    const face = (cards: { rank: string; suit: string }[]) =>
+      cards.map((c) => `${c.rank}${c.suit}`);
+
+    expect(face(sa.playerHands[0].cards)).toEqual(face(sb.playerHands[0].cards));
+    expect(face(sa.dealerHand.cards)).toEqual(face(sb.dealerHand.cards));
+    expect(sa.runningCount).toBe(sb.runningCount);
   });
 });
