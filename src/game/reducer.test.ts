@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { createReducer, initialState } from './reducer';
 import { DEFAULT_CONFIG, MIN_BET, STARTING_BANKROLL, type GameState, type GameAction } from './types';
 import { runningCount } from '@/domain/counting';
+import { canDeal } from './selectors';
 import { handValue } from '@/domain/hand';
 import { CARDS_PER_DECK } from '@/domain/deck';
 
@@ -646,6 +647,114 @@ describe('count check breakdown is self-consistent (regression)', () => {
         expect(s.lastCountCheck!.wasCorrect, 'a correct half-deck estimate was marked wrong').toBe(true);
         return;
       }
+    }
+  });
+});
+
+describe('live mode hand-to-hand flow', () => {
+  it('returns to a bettable state after each hand', () => {
+    const r = createReducer(seededRng(41));
+    let s = initialState('live', DEFAULT_CONFIG, seededRng(41));
+
+    for (let i = 0; i < 10; i++) {
+      expect(canDeal(s), `cannot bet before hand ${i}`).toBe(false); // no bet yet
+      s = r(s, { type: 'PLACE_BET', amount: 25 });
+      expect(canDeal(s), `bet placed but cannot deal on hand ${i}`).toBe(true);
+
+      s = r(s, { type: 'NEW_HAND' });
+      while (s.phase === 'playerTurn') s = r(s, { type: 'PLAYER_ACTION', action: 'stand' });
+      if (s.phase === 'seatsTurn') s = r(s, { type: 'PLAY_SEATS' });
+      if (s.phase === 'dealerTurn') s = r(s, { type: 'DEALER_PLAY' });
+      if (s.phase === 'settlement') s = r(s, { type: 'SETTLE' });
+
+      // Bet is cleared and the next hand can be staked.
+      expect(s.currentBet, `bet not cleared after hand ${i}`).toBe(0);
+      if (s.busted) break;
+    }
+  });
+
+  it('pays a blackjack at 3:2', () => {
+    const r = createReducer(seededRng(43));
+    let s = initialState('live', DEFAULT_CONFIG, seededRng(43));
+
+    for (let i = 0; i < 80; i++) {
+      const staked = 100;
+      const before = s.bankroll;
+      s = r(s, { type: 'PLACE_BET', amount: staked });
+      s = r(s, { type: 'NEW_HAND' });
+
+      const gotBJ = s.playerHands[0]?.status === 'blackjack';
+      while (s.phase === 'playerTurn') s = r(s, { type: 'PLAYER_ACTION', action: 'stand' });
+      if (s.phase === 'seatsTurn') s = r(s, { type: 'PLAY_SEATS' });
+      if (s.phase === 'dealerTurn') s = r(s, { type: 'DEALER_PLAY' });
+      if (s.phase === 'settlement') s = r(s, { type: 'SETTLE' });
+
+      if (gotBJ && s.playerHands[0].outcome === 'blackjack') {
+        // Stake returned plus 1.5x profit.
+        expect(s.bankroll).toBe(before + staked * 1.5);
+        return;
+      }
+      if (s.busted) break;
+    }
+  });
+
+  it('marks the session over when the bankroll cannot cover the minimum', () => {
+    const r = createReducer(seededRng(47));
+    let s = initialState('live', DEFAULT_CONFIG, seededRng(47));
+    // Stake the entire bankroll each hand until it is gone.
+    for (let i = 0; i < 60 && !s.busted; i++) {
+      s = r(s, { type: 'PLACE_BET', amount: s.bankroll });
+      if (s.currentBet < MIN_BET) break;
+      s = r(s, { type: 'NEW_HAND' });
+      while (s.phase === 'playerTurn') s = r(s, { type: 'PLAYER_ACTION', action: 'stand' });
+      if (s.phase === 'seatsTurn') s = r(s, { type: 'PLAY_SEATS' });
+      if (s.phase === 'dealerTurn') s = r(s, { type: 'DEALER_PLAY' });
+      if (s.phase === 'settlement') s = r(s, { type: 'SETTLE' });
+    }
+    if (s.busted) {
+      expect(s.bankroll).toBeLessThan(MIN_BET);
+      expect(canDeal(s)).toBe(false);
+    }
+  });
+
+  it('never produces a negative bankroll or fractional chips', () => {
+    const r = createReducer(seededRng(53));
+    let s = initialState('live', DEFAULT_CONFIG, seededRng(53));
+    for (let i = 0; i < 120 && !s.busted; i++) {
+      const bet = Math.min(50, s.bankroll);
+      if (bet < MIN_BET) break;
+      s = r(s, { type: 'PLACE_BET', amount: bet });
+      s = r(s, { type: 'NEW_HAND' });
+      let g = 0;
+      while (s.phase === 'playerTurn' && g++ < 20) {
+        const act = i % 4 === 0 ? 'double' : i % 4 === 1 ? 'split' : 'stand';
+        const next = r(s, { type: 'PLAYER_ACTION', action: act });
+        s = next === s ? r(s, { type: 'PLAYER_ACTION', action: 'stand' }) : next;
+      }
+      if (s.phase === 'seatsTurn') s = r(s, { type: 'PLAY_SEATS' });
+      if (s.phase === 'dealerTurn') s = r(s, { type: 'DEALER_PLAY' });
+      if (s.phase === 'settlement') s = r(s, { type: 'SETTLE' });
+
+      expect(s.bankroll, `negative bankroll at hand ${i}`).toBeGreaterThanOrEqual(0);
+      expect(Number.isInteger(s.bankroll * 2), `fractional chips at hand ${i}`).toBe(true);
+    }
+  });
+
+  it('logs nothing and never fires a count check', () => {
+    const r = createReducer(seededRng(59));
+    let s = initialState('live', DEFAULT_CONFIG, seededRng(59));
+    for (let i = 0; i < 40 && !s.busted; i++) {
+      s = r(s, { type: 'PLACE_BET', amount: MIN_BET });
+      s = r(s, { type: 'NEW_HAND' });
+      while (s.phase === 'playerTurn') s = r(s, { type: 'PLAYER_ACTION', action: 'stand' });
+      if (s.phase === 'seatsTurn') s = r(s, { type: 'PLAY_SEATS' });
+      if (s.phase === 'dealerTurn') s = r(s, { type: 'DEALER_PLAY' });
+      if (s.phase === 'settlement') s = r(s, { type: 'SETTLE' });
+
+      // Live play is a sandbox: no evaluation, no check-ins.
+      expect(s.phase, 'live mode fired a count check').not.toBe('countCheck');
+      expect(s.lastDecision, 'live mode recorded a strategy verdict').toBeNull();
+      expect(s.lastCountCheck, 'live mode recorded a count check').toBeNull();
     }
   });
 });
