@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 import { useGame } from '@/game/useGame';
 import { useConfig } from '@/game/useConfig';
 import { legalActions, canDeal } from '@/game/selectors';
@@ -9,6 +9,8 @@ import { MIN_BET, STARTING_BANKROLL, type Action } from '@/game/types';
 import { Table } from '@/components/Table';
 import { ActionBar } from '@/components/ActionBar';
 import { TableFrame } from '@/components/TableFrame';
+import { StrategyChart } from '@/components/StrategyChart';
+import { ChartButton } from '@/components/ChartButton';
 import { Chip } from '@/components/Chip';
 import { ChipStack, BetCircle } from '@/components/ChipStack';
 
@@ -21,6 +23,8 @@ export function LivePlayGame() {
   const config = useConfig();
   const game = useGame('live', config);
   const { state } = game;
+
+  const [chartOpen, setChartOpen] = useState(false);
 
   const legal = legalActions(state);
   const dealable = canDeal(state);
@@ -42,6 +46,8 @@ export function LivePlayGame() {
       else if (k === 's') act('stand');
       else if (k === 'd') act('double');
       else if (k === 'p') act('split');
+      else if (k === 'c') setChartOpen((v) => !v);
+      else if (k === 'escape') setChartOpen(false);
       else if ((k === ' ' || k === 'enter') && dealable) {
         e.preventDefault();
         game.newHand();
@@ -73,6 +79,7 @@ export function LivePlayGame() {
   return (
     <TableFrame
       title="Live Play"
+      aside={<ChartButton onClick={() => setChartOpen(true)} />}
     >
       <Table state={state} betSlot={<BetCircle amount={state.currentBet} />} />
 
@@ -126,9 +133,10 @@ export function LivePlayGame() {
         )}
 
         <p className="text-xs text-white/30">
-          H hit · S stand · D double · P split · Space deal
+          H hit · S stand · D double · P split · Space deal · C chart
         </p>
       </div>
+      {chartOpen && <StrategyChart onClose={() => setChartOpen(false)} />}
     </TableFrame>
   );
 }

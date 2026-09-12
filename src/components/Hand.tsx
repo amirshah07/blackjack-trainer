@@ -36,7 +36,9 @@ export function Hand({
           <Card
             key={card.id}
             card={card}
-            index={i}
+            // Only the opening two cards stagger. A card drawn later in the
+            // hand should appear at once, not wait behind an imaginary deal.
+            index={i < 2 ? i : 0}
             size={size}
             faceDown={hideSecond && i === 1}
           />

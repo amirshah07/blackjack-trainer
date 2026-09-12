@@ -10,6 +10,8 @@ import { ActionBar } from '@/components/ActionBar';
 import { Toast } from '@/components/Toast';
 import { StatsPanel } from '@/components/StatsPanel';
 import { TableFrame } from '@/components/TableFrame';
+import { StrategyChart } from '@/components/StrategyChart';
+import { ChartButton } from '@/components/ChartButton';
 import type { Action } from '@/game/types';
 
 const ACTION_NAME: Record<Action, string> = {
@@ -36,6 +38,8 @@ export function BasicStrategyGame() {
     setTally(logResult('strategy', decision.wasCorrect));
   }, [decision]);
 
+  const [chartOpen, setChartOpen] = useState(false);
+
   const legal = legalActions(state);
   const dealable = canDeal(state);
 
@@ -56,6 +60,8 @@ export function BasicStrategyGame() {
       else if (k === 's') act('stand');
       else if (k === 'd') act('double');
       else if (k === 'p') act('split');
+      else if (k === 'c') setChartOpen((v) => !v);
+      else if (k === 'escape') setChartOpen(false);
       else if ((k === ' ' || k === 'enter') && dealable) {
         e.preventDefault();
         game.newHand();
@@ -74,7 +80,10 @@ export function BasicStrategyGame() {
     <TableFrame
       title="Basic Strategy"
       aside={
-        <StatsPanel tally={tally} label="Correct decisions" onReset={handleReset} />
+        <div className="flex items-center gap-2">
+          <ChartButton onClick={() => setChartOpen(true)} />
+          <StatsPanel tally={tally} label="Correct decisions" onReset={handleReset} />
+        </div>
       }
     >
       <Table state={state} />
@@ -96,7 +105,7 @@ export function BasicStrategyGame() {
         )}
 
         <p className="text-xs text-white/30">
-          H hit · S stand · D double · P split · Space deal
+          H hit · S stand · D double · P split · Space deal · C chart
         </p>
       </div>
 
@@ -111,6 +120,7 @@ export function BasicStrategyGame() {
           onDismiss={game.dismissDecision}
         />
       )}
+      {chartOpen && <StrategyChart onClose={() => setChartOpen(false)} />}
     </TableFrame>
   );
 }

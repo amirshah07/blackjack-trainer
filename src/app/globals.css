@@ -49,3 +49,16 @@ body {
     animation: none;
   }
 }
+
+/* Focus ring that works on both the felt and the dark page background. */
+:focus-visible {
+  outline: 2px solid rgba(252, 211, 77, 0.9);
+  outline-offset: 2px;
+}
+
+/* Range inputs pick up the accent colour but need a visible track. */
+input[type='range'] {
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.14);
+}
