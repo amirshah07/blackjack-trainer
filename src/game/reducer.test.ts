@@ -501,3 +501,151 @@ describe('doubling', () => {
     expect(reached, 'never reached a 3-card hand to test against').toBe(true);
   });
 });
+
+describe('counting mode auto-plays the user seat', () => {
+  it('never enters playerTurn - the drill has no decisions', () => {
+    const r = createReducer(seededRng(31));
+    let s = initialState('counting', DEFAULT_CONFIG, seededRng(31));
+    for (let i = 0; i < 30; i++) {
+      s = r(s, { type: 'NEW_HAND' });
+      expect(s.phase, `entered playerTurn on hand ${i}`).not.toBe('playerTurn');
+      if (s.phase === 'seatsTurn') s = r(s, { type: 'PLAY_SEATS' });
+      if (s.phase === 'dealerTurn') s = r(s, { type: 'DEALER_PLAY' });
+      if (s.phase === 'settlement') s = r(s, { type: 'SETTLE' });
+      if (s.phase === 'countCheck') s = r(s, { type: 'SUBMIT_COUNT', guess: 0 });
+    }
+  });
+
+  it('resolves the user hand to a terminal status', () => {
+    const r = createReducer(seededRng(33));
+    let s = initialState('counting', DEFAULT_CONFIG, seededRng(33));
+    for (let i = 0; i < 20; i++) {
+      s = r(s, { type: 'NEW_HAND' });
+      if (s.phase === 'seatsTurn') s = r(s, { type: 'PLAY_SEATS' });
+      // After the seats phase the user's hand must be finished, not active.
+      for (const h of s.playerHands) {
+        expect(h.status, `user hand left active on hand ${i}`).not.toBe('active');
+      }
+      if (s.phase === 'dealerTurn') s = r(s, { type: 'DEALER_PLAY' });
+      if (s.phase === 'settlement') s = r(s, { type: 'SETTLE' });
+      if (s.phase === 'countCheck') s = r(s, { type: 'SUBMIT_COUNT', guess: 0 });
+    }
+  });
+
+  it('still settles outcomes for the auto-played hand', () => {
+    const r = createReducer(seededRng(35));
+    let s = initialState('counting', DEFAULT_CONFIG, seededRng(35));
+    s = r(s, { type: 'NEW_HAND' });
+    if (s.phase === 'seatsTurn') s = r(s, { type: 'PLAY_SEATS' });
+    if (s.phase === 'dealerTurn') s = r(s, { type: 'DEALER_PLAY' });
+    if (s.phase === 'settlement') s = r(s, { type: 'SETTLE' });
+    for (const h of s.playerHands) {
+      expect(['win', 'lose', 'push', 'blackjack']).toContain(h.outcome);
+    }
+  });
+
+  it('basic and live modes still stop for the player', () => {
+    for (const mode of ['basic', 'live'] as const) {
+      const r = createReducer(seededRng(37));
+      let s = initialState(mode, DEFAULT_CONFIG, seededRng(37));
+      let sawPlayerTurn = false;
+      for (let i = 0; i < 15 && !sawPlayerTurn; i++) {
+        if (mode === 'live') s = r(s, { type: 'PLACE_BET', amount: MIN_BET });
+        s = r(s, { type: 'NEW_HAND' });
+        if (s.phase === 'playerTurn') { sawPlayerTurn = true; break; }
+        if (s.phase === 'seatsTurn') s = r(s, { type: 'PLAY_SEATS' });
+        if (s.phase === 'dealerTurn') s = r(s, { type: 'DEALER_PLAY' });
+        if (s.phase === 'settlement') s = r(s, { type: 'SETTLE' });
+      }
+      expect(sawPlayerTurn, `${mode} never gave the player a turn`).toBe(true);
+    }
+  });
+});
+
+describe('naturals close out every hand (regression)', () => {
+  it('leaves no seat active when a blackjack ends the round early', () => {
+    // A natural on either side ends the hand before anyone acts, so
+    // PLAY_SEATS never runs. Every hand must still be closed out, or the
+    // table renders seats frozen mid-hand.
+    for (const mode of ['basic', 'counting', 'live'] as const) {
+      const r = createReducer(seededRng(33));
+      let s = initialState(mode, DEFAULT_CONFIG, seededRng(33));
+      let sawNatural = false;
+
+      for (let i = 0; i < 60; i++) {
+        if (mode === 'live') s = r(s, { type: 'PLACE_BET', amount: MIN_BET });
+        s = r(s, { type: 'NEW_HAND' });
+
+        if (s.phase === 'dealerTurn' && s.holeCardRevealed) {
+          sawNatural = true;
+          for (const h of s.playerHands) {
+            expect(h.status, `${mode}: player hand active after a natural`).not.toBe('active');
+          }
+          for (const seat of s.seats) {
+            for (const h of seat.hands) {
+              expect(h.status, `${mode}: seat hand active after a natural`).not.toBe('active');
+            }
+          }
+          break;
+        }
+
+        while (s.phase === 'playerTurn') s = r(s, { type: 'PLAYER_ACTION', action: 'stand' });
+        if (s.phase === 'seatsTurn') s = r(s, { type: 'PLAY_SEATS' });
+        if (s.phase === 'dealerTurn') s = r(s, { type: 'DEALER_PLAY' });
+        if (s.phase === 'settlement') s = r(s, { type: 'SETTLE' });
+        if (s.phase === 'countCheck') s = r(s, { type: 'SUBMIT_COUNT', guess: 0 });
+      }
+
+      expect(sawNatural, `${mode}: no natural occurred in 60 hands`).toBe(true);
+    }
+  });
+});
+
+describe('count check breakdown is self-consistent (regression)', () => {
+  it('the numbers shown actually produce the answer shown', () => {
+    // The reveal reads "running count is X, decks remaining is Y, so true
+    // count is Z". If Z is graded against exact decks while Y is rounded to
+    // half decks, the sentence contradicts itself and a correctly-counting
+    // user is marked wrong.
+    const r = createReducer(seededRng(77));
+    let s = initialState('counting', DEFAULT_CONFIG, seededRng(77));
+    let checked = 0;
+
+    for (let i = 0; i < 120 && checked < 5; i++) {
+      s = r(s, { type: 'NEW_HAND' });
+      if (s.phase === 'seatsTurn') s = r(s, { type: 'PLAY_SEATS' });
+      if (s.phase === 'dealerTurn') s = r(s, { type: 'DEALER_PLAY' });
+      if (s.phase === 'settlement') s = r(s, { type: 'SETTLE' });
+
+      if (s.phase === 'countCheck') {
+        s = r(s, { type: 'SUBMIT_COUNT', guess: 12345 });
+        const c = s.lastCountCheck!;
+        expect(Math.round(c.running / c.decksRemaining), 'breakdown does not yield the stated true count')
+          .toBe(c.actual);
+        checked++;
+      }
+    }
+    expect(checked, 'no count checks occurred').toBeGreaterThan(0);
+  });
+
+  it('grades a correct half-deck estimate as correct', () => {
+    const r = createReducer(seededRng(79));
+    let s = initialState('counting', DEFAULT_CONFIG, seededRng(79));
+
+    for (let i = 0; i < 120; i++) {
+      s = r(s, { type: 'NEW_HAND' });
+      if (s.phase === 'seatsTurn') s = r(s, { type: 'PLAY_SEATS' });
+      if (s.phase === 'dealerTurn') s = r(s, { type: 'DEALER_PLAY' });
+      if (s.phase === 'settlement') s = r(s, { type: 'SETTLE' });
+
+      if (s.phase === 'countCheck') {
+        // Compute the answer the way a counter at the table would.
+        const decks = Math.max(0.5, Math.round((s.shoe.cards.length / 52) * 2) / 2);
+        const expected = Math.round(s.runningCount / decks);
+        s = r(s, { type: 'SUBMIT_COUNT', guess: expected });
+        expect(s.lastCountCheck!.wasCorrect, 'a correct half-deck estimate was marked wrong').toBe(true);
+        return;
+      }
+    }
+  });
+});

@@ -1,4 +1,4 @@
-import { createShuffledShoe, deal, needsReshuffle, decksRemaining } from '@/domain/deck';
+import { createShuffledShoe, deal, needsReshuffle } from '@/domain/deck';
 import { handValue, isBlackjack, isBust, canSplit, canDouble } from '@/domain/hand';
 import { dealerShouldHit, settle, PAYOUT } from '@/domain/rules';
 import { getCorrectAction, upcardValue } from '@/domain/strategy';
@@ -172,22 +172,38 @@ function startNewHand(state: GameState, rng: Rng): GameState {
   // A natural on either side ends the hand immediately.
   const immediate = playerHand.status === 'blackjack' || dealerBJ;
 
+  // Counting mode is a pure observation drill: the user makes no play
+  // decisions, so their seat auto-plays with the others and the hand flows
+  // straight through to the seats phase.
+  const skipPlayerTurn = state.mode === 'counting';
+
+  /**
+   * A natural on either side ends the hand before anyone acts. Nobody gets a
+   * turn, so PLAY_SEATS never runs - close out every hand here instead, or the
+   * table is left showing seats frozen mid-hand.
+   */
+  const closeOut = (h: Hand): Hand =>
+    h.status === 'active' ? { ...h, status: 'stood' } : h;
+
   return {
     ...state,
     shoe,
     discardCount,
     runningCount: running,
     pendingReshuffle: false,
-    playerHands: [playerHand],
+    playerHands: [immediate ? closeOut(playerHand) : playerHand],
     activeHandIndex: 0,
-    seats: seats.map((s) => ({ ...s, hands: s.hands.map(restatus) })),
+    seats: seats.map((s) => ({
+      ...s,
+      hands: s.hands.map((h) => (immediate ? closeOut(restatus(h)) : restatus(h))),
+    })),
     dealerHand: dealer,
     holeCardRevealed: immediate,
     // Reveal counts the hole card the moment it turns face up.
     ...(immediate
       ? { runningCount: updateRunningCount(running, [dealer.cards[1]]) }
       : {}),
-    phase: immediate ? 'dealerTurn' : 'playerTurn',
+    phase: immediate ? 'dealerTurn' : skipPlayerTurn ? 'seatsTurn' : 'playerTurn',
     lastDecision: null,
     lastCountCheck: null,
   };
@@ -296,54 +312,90 @@ function applyPlayerAction(state: GameState, action: Action, rng: Rng): GameStat
   return finished ? advanceHand(next) : next;
 }
 
-/** Auto-plays every other seat to completion, then hands off to the dealer. */
+/**
+ * Auto-plays every other seat to completion, then hands off to the dealer.
+ *
+ * In counting mode the user's own hand is auto-played here too - there are no
+ * play decisions in that drill, only card observation.
+ */
+/**
+ * Plays a set of hands to completion with the basic-strategy bot.
+ *
+ * Shared by the non-interactive seats and - in counting mode - by the user's
+ * own hand, so both resolve by exactly the same rules.
+ */
+function autoPlayHands(
+  input: Hand[],
+  upcard: Upcard,
+  startShoe: Shoe,
+  startRunning: number,
+  rng: Rng,
+): { hands: Hand[]; shoe: Shoe; running: number } {
+  const hands = [...input];
+  let shoe = startShoe;
+  let running = startRunning;
+
+  for (let i = 0; i < hands.length; i++) {
+    let guard = 0;
+    while (hands[i].status === 'active' && guard++ < 20) {
+      const h = hands[i];
+      const act = botAction(h.cards, upcard, { handCount: hands.length });
+
+      if (act === 'stand') { hands[i] = { ...h, status: 'stood' }; break; }
+
+      if (act === 'split' && canSplit(h.cards) && hands.length < MAX_HANDS) {
+        const [a, b] = h.cards;
+        const isAces = a.rank === 'A';
+        const c1 = dealCounted(shoe, running, rng); shoe = c1.shoe; running = c1.running;
+        const c2 = dealCounted(shoe, running, rng); shoe = c2.shoe; running = c2.running;
+
+        const mk = (card: Card, other: Card): Hand => {
+          const nh: Hand = { ...emptyHand(h.bet), cards: [other, card], fromSplit: true };
+          return isAces ? { ...nh, status: 'stood' } : restatus(nh);
+        };
+        hands.splice(i, 1, mk(c1.card, a), mk(c2.card, b));
+        continue;
+      }
+
+      // hit, or a double that just draws one card and stops
+      const r = dealCounted(shoe, running, rng); shoe = r.shoe; running = r.running;
+      const updated = restatus({ ...h, cards: [...h.cards, r.card] });
+
+      hands[i] = act === 'double' && updated.status === 'active'
+        ? { ...updated, status: 'stood' }
+        : updated;
+
+      if (handValue(hands[i].cards).total >= 21 && hands[i].status === 'active') {
+        hands[i] = { ...hands[i], status: 'stood' };
+      }
+    }
+  }
+
+  return { hands, shoe, running };
+}
+
 function playSeats(state: GameState, rng: Rng): GameState {
   let shoe = state.shoe;
   let running = state.runningCount;
   const upcard = upcardOf(state);
 
   const seats: Seat[] = state.seats.map((seat) => {
-    const hands: Hand[] = [...seat.hands];
-
-    for (let i = 0; i < hands.length; i++) {
-      let guard = 0;
-      while (hands[i].status === 'active' && guard++ < 20) {
-        const h = hands[i];
-        const act = botAction(h.cards, upcard, { handCount: hands.length });
-
-        if (act === 'stand') { hands[i] = { ...h, status: 'stood' }; break; }
-
-        if (act === 'split' && canSplit(h.cards) && hands.length < MAX_HANDS) {
-          const [a, b] = h.cards;
-          const isAces = a.rank === 'A';
-          const c1 = dealCounted(shoe, running, rng); shoe = c1.shoe; running = c1.running;
-          const c2 = dealCounted(shoe, running, rng); shoe = c2.shoe; running = c2.running;
-
-          const mk = (card: Card, other: Card): Hand => {
-            const nh: Hand = { ...emptyHand(), cards: [other, card], fromSplit: true };
-            return isAces ? { ...nh, status: 'stood' } : restatus(nh);
-          };
-          hands.splice(i, 1, mk(c1.card, a), mk(c2.card, b));
-          continue;
-        }
-
-        // hit, or a double that just draws one card and stops
-        const r = dealCounted(shoe, running, rng); shoe = r.shoe; running = r.running;
-        const updated = restatus({ ...h, cards: [...h.cards, r.card] });
-
-        hands[i] = act === 'double' && updated.status === 'active'
-          ? { ...updated, status: 'stood' }
-          : updated;
-
-        if (handValue(hands[i].cards).total >= 21 && hands[i].status === 'active') {
-          hands[i] = { ...hands[i], status: 'stood' };
-        }
-      }
-    }
-    return { ...seat, hands };
+    const res = autoPlayHands(seat.hands, upcard, shoe, running, rng);
+    shoe = res.shoe;
+    running = res.running;
+    return { ...seat, hands: res.hands };
   });
 
-  return { ...state, seats, shoe, runningCount: running, phase: 'dealerTurn' };
+  // Counting mode: the user has no decisions, so their hand resolves here too.
+  let playerHands = state.playerHands;
+  if (state.mode === 'counting') {
+    const res = autoPlayHands(state.playerHands, upcard, shoe, running, rng);
+    playerHands = res.hands;
+    shoe = res.shoe;
+    running = res.running;
+  }
+
+  return { ...state, seats, playerHands, shoe, runningCount: running, phase: 'dealerTurn' };
 }
 
 /** Reveals the hole card and draws to the fixed stand-on-soft-17 rule. */
@@ -418,8 +470,17 @@ function settleRound(state: GameState): GameState {
 }
 
 function submitCount(state: GameState, guess: number, rng: Rng): GameState {
+  /**
+   * Grade against the SAME half-deck estimate the reveal quotes back.
+   *
+   * Using exact decks-remaining to grade while showing a rounded figure makes
+   * the breakdown contradict its own answer ("running 2, decks 0.5, so true
+   * count 3"), and marks a correctly-counting user wrong. Half-deck estimation
+   * is how counting is actually done at a table, so it is what we teach and
+   * what we score.
+   */
   const decksLeft = estimatedDecksRemaining(state.shoe);
-  const actual = trueCount(state.runningCount, decksRemaining(state.shoe));
+  const actual = trueCount(state.runningCount, decksLeft);
 
   return {
     ...state,
