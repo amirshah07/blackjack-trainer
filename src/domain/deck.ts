@@ -15,16 +15,31 @@ export type Shoe = {
   dealtCount: number;
 };
 
+/**
+ * Monotonic shoe counter. Card ids must be unique across the whole session,
+ * not just within one shoe: a reshuffle can happen while cards from the old
+ * shoe are still face up on the table, and React keys off the id. Without a
+ * per-shoe prefix the new shoe regenerates identical ids and two cards on
+ * screen collide.
+ */
+let shoeSerial = 0;
+
 export function createShoe(numDecks: number): Shoe {
+  const serial = shoeSerial++;
   const cards: Card[] = [];
   for (let d = 0; d < numDecks; d++) {
     for (const suit of SUITS) {
       for (const rank of RANKS) {
-        cards.push({ rank, suit, id: `${d}-${suit}-${rank}` });
+        cards.push({ rank, suit, id: `s${serial}-${d}-${suit}-${rank}` });
       }
     }
   }
   return { cards, numDecks, dealtCount: 0 };
+}
+
+/** Test hook: resets the shoe serial so ids are reproducible run to run. */
+export function __resetShoeSerial(): void {
+  shoeSerial = 0;
 }
 
 /** Fisher-Yates. `rng` is injectable so tests can be deterministic. */

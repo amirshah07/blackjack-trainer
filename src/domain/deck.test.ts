@@ -44,7 +44,19 @@ describe('shuffle', () => {
     const seeded = () => { let s = 42; return () => (s = (s * 16807) % 2147483647) / 2147483647; };
     const a = createShuffledShoe(2, seeded());
     const b = createShuffledShoe(2, seeded());
-    expect(a.cards.map((c) => c.id)).toEqual(b.cards.map((c) => c.id));
+    // Compare rank/suit ORDER, not ids: each shoe carries a unique serial
+    // prefix so that a reshuffle cannot collide with cards still on the table.
+    const shape = (s: typeof a) => s.cards.map((c) => `${c.rank}${c.suit}`);
+    expect(shape(a)).toEqual(shape(b));
+  });
+
+  it('gives each shoe generation unique ids', () => {
+    // A reshuffle can happen while old cards are still face up; ids are React
+    // keys, so a collision would break the very animation they exist for.
+    const a = createShoe(1);
+    const b = createShoe(1);
+    const overlap = new Set(a.cards.map((c) => c.id));
+    for (const card of b.cards) expect(overlap.has(card.id)).toBe(false);
   });
 
   it('actually reorders', () => {
