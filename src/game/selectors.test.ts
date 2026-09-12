@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { handLabel, legalActions, canDeal, dealerVisibleLabel } from './selectors';
-import { initialState, createReducer, completeDeal } from './reducer';
+import { initialState, createReducer, completeDeal, completeSeats, completeDealer } from './reducer';
 import { DEFAULT_CONFIG, emptyHand, MIN_BET, type GameState, type Hand } from './types';
 import type { Card, Rank } from '@/domain/cards';
 
@@ -139,8 +139,8 @@ describe('dealer label never leaks the hole card', () => {
         return;
       }
       while (s.phase === 'playerTurn') s = reduce(s, { type: 'PLAYER_ACTION', action: 'stand' });
-      if (s.phase === 'seatsTurn') s = reduce(s, { type: 'PLAY_SEATS' });
-      if (s.phase === 'dealerTurn') s = reduce(s, { type: 'DEALER_PLAY' });
+      if (s.phase === 'seatsTurn') s = completeSeats(s, reduce);
+      if (s.phase === 'dealerTurn') s = completeDealer(s, reduce);
       if (s.phase === 'settlement') s = reduce(s, { type: 'SETTLE' });
     }
   });

@@ -374,115 +374,129 @@ function applyPlayerAction(state: GameState, action: Action, rng: Rng): GameStat
  * play decisions in that drill, only card observation.
  */
 /**
- * Plays a set of hands to completion with the basic-strategy bot.
+ * Takes ONE bot action on one hand: a single hit, a stand, or a split.
  *
- * Shared by the non-interactive seats and - in counting mode - by the user's
- * own hand, so both resolve by exactly the same rules.
+ * Returns null when the hand set is fully resolved. Stepping rather than
+ * resolving in a loop is what keeps the play-out watchable - resolving a whole
+ * table at once dumps a dozen cards on screen simultaneously, which is exactly
+ * when a counter needs to see them arrive one by one.
  */
-function autoPlayHands(
-  input: Hand[],
+function stepHands(
+  hands: Hand[],
   upcard: Upcard,
-  startShoe: Shoe,
-  startRunning: number,
+  shoe: Shoe,
+  running: number,
   rng: Rng,
-): { hands: Hand[]; shoe: Shoe; running: number } {
-  const hands = [...input];
-  let shoe = startShoe;
-  let running = startRunning;
+): { hands: Hand[]; shoe: Shoe; running: number } | null {
+  const i = hands.findIndex((h) => h.status === 'active');
+  if (i === -1) return null;
 
-  for (let i = 0; i < hands.length; i++) {
-    let guard = 0;
-    while (hands[i].status === 'active' && guard++ < 20) {
-      const h = hands[i];
-      const act = botAction(h.cards, upcard, { handCount: hands.length });
+  const h = hands[i];
+  const next = [...hands];
+  const act = botAction(h.cards, upcard, { handCount: hands.length });
 
-      if (act === 'stand') { hands[i] = { ...h, status: 'stood' }; break; }
-
-      if (act === 'split' && canSplit(h.cards) && hands.length < MAX_HANDS) {
-        const [a, b] = h.cards;
-        const isAces = a.rank === 'A';
-        const c1 = dealCounted(shoe, running, rng); shoe = c1.shoe; running = c1.running;
-        const c2 = dealCounted(shoe, running, rng); shoe = c2.shoe; running = c2.running;
-
-        const mk = (card: Card, other: Card): Hand => {
-          const nh: Hand = { ...emptyHand(h.bet), cards: [other, card], fromSplit: true };
-          return isAces ? { ...nh, status: 'stood' } : restatus(nh);
-        };
-        hands.splice(i, 1, mk(c1.card, a), mk(c2.card, b));
-        continue;
-      }
-
-      // hit, or a double that just draws one card and stops
-      const r = dealCounted(shoe, running, rng); shoe = r.shoe; running = r.running;
-      const updated = restatus({ ...h, cards: [...h.cards, r.card] });
-
-      hands[i] = act === 'double' && updated.status === 'active'
-        ? { ...updated, status: 'stood' }
-        : updated;
-
-      if (handValue(hands[i].cards).total >= 21 && hands[i].status === 'active') {
-        hands[i] = { ...hands[i], status: 'stood' };
-      }
-    }
+  if (act === 'stand') {
+    next[i] = { ...h, status: 'stood' };
+    return { hands: next, shoe, running };
   }
 
-  return { hands, shoe, running };
+  if (act === 'split' && canSplit(h.cards) && hands.length < MAX_HANDS) {
+    const [a, b] = h.cards;
+    const isAces = a.rank === 'A';
+    const c1 = dealCounted(shoe, running, rng);
+    const c2 = dealCounted(c1.shoe, c1.running, rng);
+
+    const mk = (card: Card, other: Card): Hand => {
+      const nh: Hand = { ...emptyHand(h.bet), cards: [other, card], fromSplit: true };
+      return isAces ? { ...nh, status: 'stood' } : restatus(nh);
+    };
+    next.splice(i, 1, mk(c1.card, a), mk(c2.card, b));
+    return { hands: next, shoe: c2.shoe, running: c2.running };
+  }
+
+  // hit, or a double that draws exactly one card and stops
+  const r = dealCounted(shoe, running, rng);
+  const updated = restatus({ ...h, cards: [...h.cards, r.card] });
+
+  next[i] =
+    act === 'double' && updated.status === 'active'
+      ? { ...updated, status: 'stood' }
+      : updated;
+
+  if (handValue(next[i].cards).total >= 21 && next[i].status === 'active') {
+    next[i] = { ...next[i], status: 'stood' };
+  }
+
+  return { hands: next, shoe: r.shoe, running: r.running };
 }
 
+/**
+ * Advances the auto-played hands by ONE action per dispatch.
+ *
+ * Seats resolve left to right, then - in counting mode - the user's own hand,
+ * then the phase hands over to the dealer. The caller re-dispatches until the
+ * phase changes.
+ */
 function playSeats(state: GameState, rng: Rng): GameState {
-  let shoe = state.shoe;
-  let running = state.runningCount;
   const upcard = upcardOf(state);
 
-  const seats: Seat[] = state.seats.map((seat) => {
-    const res = autoPlayHands(seat.hands, upcard, shoe, running, rng);
-    shoe = res.shoe;
-    running = res.running;
-    return { ...seat, hands: res.hands };
-  });
+  // Advance the first seat that still has an unfinished hand.
+  for (let i = 0; i < state.seats.length; i++) {
+    const seat = state.seats[i];
+    const res = stepHands(seat.hands, upcard, state.shoe, state.runningCount, rng);
+    if (!res) continue;
+
+    const seats = [...state.seats];
+    seats[i] = { ...seat, hands: res.hands };
+    return { ...state, seats, shoe: res.shoe, runningCount: res.running };
+  }
 
   // Counting mode: the user has no decisions, so their hand resolves here too.
-  let playerHands = state.playerHands;
   if (state.mode === 'counting') {
-    const res = autoPlayHands(state.playerHands, upcard, shoe, running, rng);
-    playerHands = res.hands;
-    shoe = res.shoe;
-    running = res.running;
-  }
-
-  return { ...state, seats, playerHands, shoe, runningCount: running, phase: 'dealerTurn' };
-}
-
-/** Reveals the hole card and draws to the fixed stand-on-soft-17 rule. */
-function playDealer(state: GameState, rng: Rng): GameState {
-  let shoe = state.shoe;
-  let running = state.runningCount;
-  let cards = [...state.dealerHand.cards];
-
-  // The hole card becomes visible now, so it joins the count now.
-  if (!state.holeCardRevealed && cards[1]) {
-    running = updateRunningCount(running, [cards[1]]);
-  }
-
-  // No live hands left to beat - dealer doesn't draw.
-  const anyLive = state.playerHands.some((h) => h.status !== 'bust');
-  if (anyLive) {
-    let guard = 0;
-    while (dealerShouldHit(cards) && guard++ < 20) {
-      const r = dealCounted(shoe, running, rng);
-      shoe = r.shoe; running = r.running;
-      cards = [...cards, r.card];
+    const res = stepHands(state.playerHands, upcard, state.shoe, state.runningCount, rng);
+    if (res) {
+      return { ...state, playerHands: res.hands, shoe: res.shoe, runningCount: res.running };
     }
   }
 
-  return {
-    ...state,
-    shoe,
-    runningCount: running,
-    holeCardRevealed: true,
-    dealerHand: { ...state.dealerHand, cards },
-    phase: 'settlement',
-  };
+  // Everyone is finished.
+  return { ...state, phase: 'dealerTurn' };
+}
+
+/**
+ * Advances the dealer by ONE step per dispatch: first the hole-card reveal,
+ * then a single draw at a time, so the dealer's hand is as followable as the
+ * rest of the table.
+ */
+function playDealer(state: GameState, rng: Rng): GameState {
+  // Step 1: turn the hole card face up. It joins the count only now, because
+  // only now can a counter see it.
+  if (!state.holeCardRevealed) {
+    const hole = state.dealerHand.cards[1];
+    return {
+      ...state,
+      runningCount: hole ? updateRunningCount(state.runningCount, [hole]) : state.runningCount,
+      holeCardRevealed: true,
+    };
+  }
+
+  const cards = state.dealerHand.cards;
+
+  // No live hands left to beat - the dealer does not draw.
+  const anyLive = state.playerHands.some((h) => h.status !== 'bust');
+
+  // Step 2: one draw per dispatch, while the fixed rules require another card.
+  if (anyLive && dealerShouldHit(cards)) {
+    const r = dealCounted(state.shoe, state.runningCount, rng);
+    return {
+      ...state,
+      shoe: r.shoe,
+      runningCount: r.running,
+      dealerHand: { ...state.dealerHand, cards: [...cards, r.card] },
+    };
+  }
+
+  return { ...state, phase: 'settlement' };
 }
 
 function settleRound(state: GameState): GameState {
@@ -551,20 +565,55 @@ function submitCount(state: GameState, guess: number, rng: Rng): GameState {
   };
 }
 
+type Reduce = (s: GameState, a: GameAction) => GameState;
+
 /**
  * Drains the opening deal in one go.
  *
  * The UI deals a card at a time so the pace is watchable, but tests and any
  * caller that does not care about the animation can settle the table at once.
  */
-export function completeDeal(
-  state: GameState,
-  reduce: (s: GameState, a: GameAction) => GameState,
-): GameState {
+export function completeDeal(state: GameState, reduce: Reduce): GameState {
   let s = state;
   let guard = 0;
   while (s.phase === 'dealing' && guard++ < 64) {
     s = reduce(s, { type: 'DEAL_CARD' });
+  }
+  return s;
+}
+
+/** Drains the auto-played seats, which also advance one action at a time. */
+export function completeSeats(state: GameState, reduce: Reduce): GameState {
+  let s = state;
+  let guard = 0;
+  while (s.phase === 'seatsTurn' && guard++ < 256) {
+    s = reduce(s, { type: 'PLAY_SEATS' });
+  }
+  return s;
+}
+
+/** Drains the dealer's reveal and draws. */
+export function completeDealer(state: GameState, reduce: Reduce): GameState {
+  let s = state;
+  let guard = 0;
+  while (s.phase === 'dealerTurn' && guard++ < 64) {
+    s = reduce(s, { type: 'DEALER_PLAY' });
+  }
+  return s;
+}
+
+/**
+ * Plays a hand from a freshly-dispatched NEW_HAND through to settlement,
+ * skipping every animation step. For tests and reasoning about outcomes.
+ */
+export function completeRound(state: GameState, reduce: Reduce): GameState {
+  let s = completeDeal(state, reduce);
+  let guard = 0;
+  while (guard++ < 64) {
+    if (s.phase === 'seatsTurn') { s = completeSeats(s, reduce); continue; }
+    if (s.phase === 'dealerTurn') { s = completeDealer(s, reduce); continue; }
+    if (s.phase === 'settlement') { s = reduce(s, { type: 'SETTLE' }); continue; }
+    break;
   }
   return s;
 }

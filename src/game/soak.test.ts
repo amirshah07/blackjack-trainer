@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createReducer, initialState, completeDeal } from './reducer';
+import { createReducer, initialState, completeDeal, completeSeats, completeDealer } from './reducer';
 import { DEFAULT_CONFIG, MIN_BET, type GameState, type Mode } from './types';
 import { CARDS_PER_DECK } from '@/domain/deck';
 
@@ -39,8 +39,8 @@ function soak(mode: Mode, numDecks: number, numOtherPlayers: number, seed: numbe
     }
     expect(s.phase, `wedged in playerTurn at hand ${i}`).not.toBe('playerTurn');
 
-    if (s.phase === 'seatsTurn') s = reduce(s, { type: 'PLAY_SEATS' });
-    if (s.phase === 'dealerTurn') s = reduce(s, { type: 'DEALER_PLAY' });
+    if (s.phase === 'seatsTurn') s = completeSeats(s, reduce);
+    if (s.phase === 'dealerTurn') s = completeDealer(s, reduce);
     if (s.phase === 'settlement') s = reduce(s, { type: 'SETTLE' });
     if (s.phase === 'countCheck') s = reduce(s, { type: 'SUBMIT_COUNT', guess: 0 });
 
@@ -105,8 +105,8 @@ describe('soak - state machine stability', () => {
       s = completeDeal(reduce(s, { type: 'NEW_HAND' }), reduce);
       let g = 0;
       while (s.phase === 'playerTurn' && g++ < 30) s = reduce(s, { type: 'PLAYER_ACTION', action: 'stand' });
-      if (s.phase === 'seatsTurn') s = reduce(s, { type: 'PLAY_SEATS' });
-      if (s.phase === 'dealerTurn') s = reduce(s, { type: 'DEALER_PLAY' });
+      if (s.phase === 'seatsTurn') s = completeSeats(s, reduce);
+      if (s.phase === 'dealerTurn') s = completeDealer(s, reduce);
       if (s.phase === 'settlement') s = reduce(s, { type: 'SETTLE' });
       if (s.phase === 'countCheck') { checks++; s = reduce(s, { type: 'SUBMIT_COUNT', guess: 0 }); }
     }

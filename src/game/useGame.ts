@@ -42,7 +42,28 @@ export function useGame(mode: Mode, config: Config) {
    */
   // A plain value, derived from state - no ref mutation during render, which
   // is an anti-pattern and misbehaves under StrictMode's double-invoke.
-  const tick = `${state.phase}:${state.dealQueue.length}:${state.handsPlayed}`;
+  /**
+   * Changes whenever there is more work to animate.
+   *
+   * The card count matters: during seatsTurn and dealerTurn the phase, queue
+   * and hand number all stay put between steps, so without it the effect would
+   * not re-fire and the play-out would stall after a single card.
+   */
+  const cardsOnTable =
+    state.seats.reduce((n, s) => n + s.hands.reduce((m, h) => m + h.cards.length, 0), 0) +
+    state.playerHands.reduce((n, h) => n + h.cards.length, 0) +
+    state.dealerHand.cards.length;
+
+  const tick = [
+    state.phase,
+    state.dealQueue.length,
+    state.handsPlayed,
+    cardsOnTable,
+    // Stands and the hole-card reveal advance play without dealing a card.
+    state.holeCardRevealed,
+    state.seats.reduce((n, s) => n + s.hands.filter((h) => h.status === 'active').length, 0),
+    state.playerHands.filter((h) => h.status === 'active').length,
+  ].join(':');
 
   useEffect(() => {
     const next: GameAction | null =
