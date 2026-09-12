@@ -4,24 +4,37 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { DEFAULT_CONFIG, type Mode, type Speed } from '@/game/types';
 
-const MODES: { id: Mode; name: string; blurb: string; needsSpeed: boolean }[] = [
+/**
+ * Which table options each mode actually exposes.
+ *
+ * Basic Strategy shows none of them: the chart depends only on your hand and
+ * the dealer's upcard, so shoe size and table size change nothing you are
+ * being trained on. The other two modes are about card flow, where both
+ * matter - they drive the count and the pace.
+ */
+const MODES: {
+  id: Mode;
+  name: string;
+  blurb: string;
+  showsTableOptions: boolean;
+}[] = [
   {
     id: 'basic',
     name: 'Basic Strategy',
     blurb: 'Play hands and get told instantly whether each decision matched the chart.',
-    needsSpeed: false,
+    showsTableOptions: false,
   },
   {
     id: 'counting',
     name: 'Card Counting',
     blurb: 'Watch cards flow across the table and keep the true count. Periodic check-ins.',
-    needsSpeed: true,
+    showsTableOptions: true,
   },
   {
     id: 'live',
     name: 'Live Play',
     blurb: 'Bet, play, and manage a bankroll. No feedback - just a table to play at.',
-    needsSpeed: true,
+    showsTableOptions: true,
   },
 ];
 
@@ -34,14 +47,24 @@ export default function StartScreen() {
   const [numOtherPlayers, setNumOtherPlayers] = useState(DEFAULT_CONFIG.numOtherPlayers);
   const [speed, setSpeed] = useState<Speed>(DEFAULT_CONFIG.speed);
 
-  const showSpeed = MODES.find((m) => m.id === mode)?.needsSpeed ?? false;
+  const showTableOptions = MODES.find((m) => m.id === mode)?.showsTableOptions ?? false;
 
   function start() {
-    const params = new URLSearchParams({
-      decks: String(numDecks),
-      players: String(numOtherPlayers),
-      speed,
-    });
+    // Basic Strategy does not expose the table options, so it must not
+    // silently inherit whatever the hidden sliders happen to hold - send the
+    // defaults explicitly and let the URL say what the table actually is.
+    const params = showTableOptions
+      ? new URLSearchParams({
+          decks: String(numDecks),
+          players: String(numOtherPlayers),
+          speed,
+        })
+      : new URLSearchParams({
+          decks: String(DEFAULT_CONFIG.numDecks),
+          players: String(DEFAULT_CONFIG.numOtherPlayers),
+          speed: DEFAULT_CONFIG.speed,
+        });
+
     router.push(`/${mode}?${params}`);
   }
 
@@ -75,6 +98,7 @@ export default function StartScreen() {
         </div>
       </section>
 
+      {showTableOptions && (
       <section className="space-y-5">
         <h2 className="text-xs font-semibold uppercase tracking-widest text-white/50">Table</h2>
 
@@ -94,7 +118,7 @@ export default function StartScreen() {
           onChange={setNumOtherPlayers}
         />
 
-        {showSpeed && (
+        {(
           <div>
             <p className="mb-2 flex justify-between text-sm">
               <span className="text-white/70">Dealing speed</span>
@@ -119,6 +143,7 @@ export default function StartScreen() {
           </div>
         )}
       </section>
+      )}
 
       <button
         onClick={start}
