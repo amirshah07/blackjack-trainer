@@ -1,4 +1,4 @@
-import type { Card } from '@/domain/cards';
+import type { Card, Suit, Rank } from '@/domain/cards';
 import type { Shoe } from '@/domain/deck';
 import type { Action, Upcard } from '@/domain/strategy';
 import type { Outcome } from '@/domain/rules';
@@ -137,4 +137,4 @@ export type GameAction =
   | { type: 'DISMISS_COUNT_CHECK' }
   | { type: 'RESET_SESSION' };
 
-export type { Card, Shoe, Action, Upcard, Outcome };
+export type { Card, Suit, Rank, Shoe, Action, Upcard, Outcome };
