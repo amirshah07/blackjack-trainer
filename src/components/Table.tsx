@@ -22,10 +22,26 @@ export function Table({ state, betSlot }: TableProps) {
   const left = seats.slice(0, mid);
   const right = seats.slice(mid);
 
+  /**
+   * Cards shrink as the table fills up.
+   *
+   * The page is exactly viewport height, so a crowded table has to fit by
+   * scaling rather than by pushing the controls off screen. Seven seats plus
+   * splits is the worst case.
+   */
+  const crowded = seats.length >= 5;
+  const seatSize = crowded ? 'xs' : 'sm';
+  const heroSize = crowded ? 'sm' : 'md';
+
   const showDealerLabel = dealerHand.cards.length > 0;
 
   return (
-    <div className="relative mx-auto w-full max-w-5xl overflow-hidden rounded-[2rem] bg-felt px-4 py-6 shadow-2xl ring-1 ring-emerald-900/40 sm:px-8">
+    /*
+      The felt scrolls internally as a last resort: the page itself never
+      scrolls, so an unusually tall hand (many splits at a full table) stays
+      reachable without pushing the controls off screen.
+    */
+    <div className="relative mx-auto flex h-full max-h-full w-full max-w-5xl flex-col overflow-y-auto rounded-[2rem] bg-felt px-4 py-4 shadow-2xl ring-1 ring-emerald-900/40 sm:px-8">
       {/* felt texture */}
       <div
         aria-hidden
@@ -36,7 +52,7 @@ export function Table({ state, betSlot }: TableProps) {
         }}
       />
 
-      <div className="relative flex flex-col items-center gap-5">
+      <div className="relative flex min-h-0 flex-1 flex-col items-center justify-center gap-2">
         {/* Dealer */}
         <div className="flex flex-col items-center gap-1">
           <span className="text-[0.7rem] font-semibold uppercase tracking-widest text-emerald-100/70">
@@ -47,6 +63,7 @@ export function Table({ state, betSlot }: TableProps) {
               hand={dealerHand}
               hideSecond={!state.holeCardRevealed}
               label={showDealerLabel ? dealerVisibleLabel(state) : ''}
+              size={heroSize}
               outcomeLabel=""
             />
           ) : (
@@ -65,7 +82,7 @@ export function Table({ state, betSlot }: TableProps) {
                 {seat.hands.length > 0 ? (
                   <div className="flex gap-2">
                     {seat.hands.map((h, i) => (
-                      <Hand key={i} hand={h} label={handLabel(h)} size="sm" />
+                      <Hand key={i} hand={h} label={handLabel(h)} size={seatSize} />
                     ))}
                   </div>
                 ) : (
@@ -91,6 +108,7 @@ export function Table({ state, betSlot }: TableProps) {
                   key={i}
                   hand={h}
                   label={handLabel(h)}
+                  size={heroSize}
                   active={phase === 'playerTurn' && i === activeHandIndex && playerHands.length > 1}
                   outcomeLabel={h.outcome ? OUTCOME_LABEL[h.outcome] : undefined}
                 />

@@ -18,7 +18,7 @@ export type CardProps = {
   faceDown?: boolean;
   /** Deal-in animation offset, so cards in a hand stagger. */
   index?: number;
-  size?: 'sm' | 'md';
+  size?: 'xs' | 'sm' | 'md';
 };
 
 /**
@@ -29,7 +29,7 @@ export type CardProps = {
  * defeatable with devtools.
  */
 function CardImpl({ card, faceDown = false, index = 0, size = 'md' }: CardProps) {
-  const w = size === 'sm' ? 48 : 64;
+  const w = size === 'xs' ? 38 : size === 'sm' ? 48 : 64;
   const h = Math.round(w * 1.4);
 
   if (faceDown || !card) {

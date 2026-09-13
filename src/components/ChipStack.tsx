@@ -17,19 +17,26 @@ export function ChipStack({ amount, label, layout = 'stack' }: ChipStackProps) {
     <div className="flex flex-col items-center gap-1.5">
       {chips.length > 0 && (
         <div
-          className={layout === 'stack' ? 'relative w-11' : 'flex -space-x-5'}
-          // A stack is absolutely positioned, so it needs an explicit height:
-          // the top chip's offset plus one chip.
-          style={layout === 'stack' ? { height: (chips.length - 1) * 7 + 44 } : undefined}
+          className={layout === 'stack' ? 'relative w-9' : 'flex -space-x-5'}
+          /*
+            A stack is absolutely positioned, so it needs an explicit height.
+            Kept compact - a tall stack otherwise overlaps the felt above it
+            now that the page is exactly viewport height.
+          */
+          style={
+            layout === 'stack'
+              ? { height: (chips.length - 1) * 4 + 34 }
+              : undefined
+          }
         >
           {chips.map((c, i) =>
             layout === 'stack' ? (
               <div
                 key={`${i}-${c}`}
                 className="absolute left-0"
-                style={{ bottom: `${i * 7}px`, zIndex: i }}
+                style={{ bottom: `${i * 4}px`, zIndex: i }}
               >
-                <Chip value={c} size={44} index={0} />
+                <Chip value={c} size={34} index={0} />
               </div>
             ) : (
               <Chip key={`${i}-${c}`} value={c} size={38} index={0} />

@@ -11,8 +11,14 @@ export function TableFrame({
   children: React.ReactNode;
 }) {
   return (
-    <main className="mx-auto flex min-h-screen max-w-5xl flex-col gap-4 px-4 py-6">
-      <header className="flex flex-wrap items-center justify-between gap-3">
+    /*
+      h-screen rather than min-h-screen: the page is exactly the viewport, so
+      a growing table shrinks its own area instead of pushing the controls
+      below the fold. overflow-hidden stops any residual rounding from
+      scrolling the whole document.
+    */
+    <main className="mx-auto flex h-screen max-w-5xl flex-col gap-3 overflow-hidden px-4 py-4">
+      <header className="flex shrink-0 flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <Link
             href="/"

@@ -97,8 +97,8 @@ export function CardCountingGame() {
       title="Card Counting"
       aside={<StatsPanel tally={tally} label="Correct counts" onReset={handleReset} />}
     >
-      <div className="flex items-start justify-center gap-4">
-        <div className="min-w-0 flex-1">
+      <div className="flex min-h-0 flex-1 items-stretch justify-center gap-4">
+        <div className="flex min-h-0 min-w-0 flex-1">
           <Table state={state} />
         </div>
         {/*
@@ -111,7 +111,7 @@ export function CardCountingGame() {
         </div>
       </div>
 
-      <div className="flex min-h-[4.5rem] flex-col items-center justify-center gap-3">
+      <div className="flex shrink-0 flex-col items-center justify-center gap-2 pb-1">
         <button
           onClick={() => setRunning((r) => !r)}
           className={[

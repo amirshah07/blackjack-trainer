@@ -10,7 +10,7 @@ export type HandProps = {
   /** Total to display. Computed by the caller so this stays domain-free. */
   label?: string;
   active?: boolean;
-  size?: 'sm' | 'md';
+  size?: 'xs' | 'sm' | 'md';
   outcomeLabel?: string;
 };
 

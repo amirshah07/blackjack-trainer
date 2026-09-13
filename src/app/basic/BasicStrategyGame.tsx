@@ -86,9 +86,11 @@ export function BasicStrategyGame() {
         </div>
       }
     >
-      <Table state={state} />
+      <div className="flex min-h-0 flex-1 items-stretch justify-center">
+        <Table state={state} />
+      </div>
 
-      <div className="flex min-h-[4.5rem] flex-col items-center justify-center gap-3">
+      <div className="flex shrink-0 flex-col items-center justify-center gap-2 pb-1">
         {state.phase === 'playerTurn' ? (
           <ActionBar legal={legal} onAction={act} />
         ) : dealable ? (

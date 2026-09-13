@@ -82,8 +82,8 @@ export function LivePlayGame() {
       title="Live Play"
       aside={<ChartButton onClick={() => setChartOpen(true)} />}
     >
-      <div className="flex items-start justify-center gap-4">
-        <div className="min-w-0 flex-1">
+      <div className="flex min-h-0 flex-1 items-stretch justify-center gap-4">
+        <div className="flex min-h-0 min-w-0 flex-1">
           <Table state={state} betSlot={<BetCircle amount={stakeAtRisk(state)} />} />
         </div>
         {/*
@@ -96,7 +96,7 @@ export function LivePlayGame() {
         </div>
       </div>
 
-      <div className="flex min-h-[7rem] flex-col items-center justify-center gap-3">
+      <div className="flex shrink-0 flex-col items-center justify-center gap-2 pb-1">
         {state.phase === 'playerTurn' ? (
           <ActionBar legal={legal} onAction={act} />
         ) : betting ? (
