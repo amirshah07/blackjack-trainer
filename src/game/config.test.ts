@@ -19,7 +19,9 @@ describe('parseConfig', () => {
     expect(parseConfig({ decks: '0' }).numDecks).toBe(1);
     expect(parseConfig({ decks: '-5' }).numDecks).toBe(1);
     expect(parseConfig({ players: '100' }).numOtherPlayers).toBe(7);
-    expect(parseConfig({ players: '1' }).numOtherPlayers).toBe(2);
+    // 0 is legal - Basic Strategy plays heads-up.
+    expect(parseConfig({ players: '0' }).numOtherPlayers).toBe(0);
+    expect(parseConfig({ players: '-3' }).numOtherPlayers).toBe(0);
   });
 
   it('rounds fractional values', () => {
@@ -43,7 +45,7 @@ describe('parseConfig', () => {
         const c = parseConfig({ decks: d, players: p });
         expect(c.numDecks).toBeGreaterThanOrEqual(1);
         expect(c.numDecks).toBeLessThanOrEqual(8);
-        expect(c.numOtherPlayers).toBeGreaterThanOrEqual(2);
+        expect(c.numOtherPlayers).toBeGreaterThanOrEqual(0);
         expect(c.numOtherPlayers).toBeLessThanOrEqual(7);
         expect(Number.isInteger(c.numDecks)).toBe(true);
         expect(Number.isInteger(c.numOtherPlayers)).toBe(true);

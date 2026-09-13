@@ -61,7 +61,9 @@ export default function StartScreen() {
         })
       : new URLSearchParams({
           decks: String(DEFAULT_CONFIG.numDecks),
-          players: String(DEFAULT_CONFIG.numOtherPlayers),
+          // Heads-up: other seats consume cards and move the count, neither of
+          // which affects whether a decision matched basic strategy.
+          players: '0',
           speed: DEFAULT_CONFIG.speed,
         });
 

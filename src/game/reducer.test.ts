@@ -1055,3 +1055,41 @@ describe('count reveal survives the next hand (regression)', () => {
     expect(seen[0]).not.toBe(seen[1]); // a fresh object, so the UI re-renders
   });
 });
+
+describe('heads-up table (no other players)', () => {
+  it('deals and settles with zero seats', () => {
+    const r = createReducer(seededRng(23));
+    let s = initialState('basic', { ...DEFAULT_CONFIG, numOtherPlayers: 0 }, seededRng(23));
+    expect(s.seats).toHaveLength(0);
+
+    for (let i = 0; i < 20; i++) {
+      s = completeDeal(r(s, { type: 'NEW_HAND' }), r);
+      // Only the user and the dealer get cards.
+      expect(s.playerHands[0].cards).toHaveLength(2);
+      expect(s.dealerHand.cards).toHaveLength(2);
+
+      while (s.phase === 'playerTurn') s = r(s, { type: 'PLAYER_ACTION', action: 'stand' });
+      s = completeSeats(s, r);
+      s = completeDealer(s, r);
+      if (s.phase === 'settlement') s = r(s, { type: 'SETTLE' });
+
+      expect(['win', 'lose', 'push', 'blackjack']).toContain(s.playerHands[0].outcome);
+    }
+  });
+
+  it('consumes only four cards per hand', () => {
+    const r = createReducer(seededRng(29));
+    const init = initialState('basic', { ...DEFAULT_CONFIG, numOtherPlayers: 0 }, seededRng(29));
+    const s = completeDeal(r(init, { type: 'NEW_HAND' }), r);
+    expect(init.shoe.cards.length - s.shoe.cards.length).toBe(4);
+  });
+
+  it('still evaluates decisions against the chart', () => {
+    const r = createReducer(seededRng(31));
+    let s = initialState('basic', { ...DEFAULT_CONFIG, numOtherPlayers: 0 }, seededRng(31));
+    s = completeDeal(r(s, { type: 'NEW_HAND' }), r);
+    if (s.phase !== 'playerTurn') return;
+    const after = r(s, { type: 'PLAYER_ACTION', action: 'stand' });
+    expect(after.lastDecision).not.toBeNull();
+  });
+});

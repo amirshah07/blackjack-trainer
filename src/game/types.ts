@@ -36,14 +36,16 @@ export type Phase =
 
 export type Config = {
   numDecks: number;      // 1-8
-  numOtherPlayers: number; // 2-7
+  numOtherPlayers: number; // 0-7 (0 = heads-up, used by Basic Strategy)
   speed: Speed;
 };
 
 export const DEFAULT_CONFIG: Config = {
   numDecks: 6,
   numOtherPlayers: 3,
-  speed: 'medium',
+  // Basic Strategy never shows the speed control, and waiting on a slow deal
+  // between decisions is dead time there. The other modes still expose it.
+  speed: 'fast',
 };
 
 /** Bankroll constants, live mode only. */

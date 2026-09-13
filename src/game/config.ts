@@ -31,7 +31,9 @@ export function parseConfig(raw: {
   const speed = raw.speed as Speed | null | undefined;
   return {
     numDecks: num(raw.decks, 1, 8, DEFAULT_CONFIG.numDecks),
-    numOtherPlayers: num(raw.players, 2, 7, DEFAULT_CONFIG.numOtherPlayers),
+    // 0 is legal: Basic Strategy plays heads-up, since other seats change
+    // nothing about the correct play.
+    numOtherPlayers: num(raw.players, 0, 7, DEFAULT_CONFIG.numOtherPlayers),
     speed: speed && SPEEDS.includes(speed) ? speed : DEFAULT_CONFIG.speed,
   };
 }
