@@ -21,7 +21,7 @@ const MODES: {
   {
     id: 'basic',
     name: 'Basic Strategy',
-    blurb: 'Play hands and get told instantly whether each decision matched the chart.',
+    blurb: 'Play hands and get told instantly whether each decision matched basic strategy.',
     showsTableOptions: false,
   },
   {
