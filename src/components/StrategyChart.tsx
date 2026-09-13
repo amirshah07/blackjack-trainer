@@ -34,7 +34,7 @@ export function StrategyChart({ onClose }: { onClose: () => void }) {
       aria-label="Basic strategy chart"
     >
       <div
-        className="my-auto flex max-h-[calc(100vh-2rem)] w-full max-w-3xl flex-col rounded-2xl bg-slate-900 p-5 shadow-2xl ring-1 ring-white/15"
+        className="my-auto flex max-h-[calc(100vh-2rem)] w-full max-w-6xl flex-col rounded-2xl bg-[#12261d] p-6 shadow-2xl ring-1 ring-emerald-200/15"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="mb-4 flex shrink-0 items-center justify-between">
@@ -53,20 +53,20 @@ export function StrategyChart({ onClose }: { onClose: () => void }) {
           </button>
         </header>
 
-        <div className="min-h-0 flex-1 space-y-5 overflow-auto">
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-x-8 gap-y-5 overflow-auto lg:grid-cols-3">
           {sections.map((section) => (
             <section key={section.title}>
               <h3 className="mb-1.5 text-[0.7rem] font-semibold uppercase tracking-widest text-white/45">
                 {section.title}
               </h3>
-              <table className="w-full border-separate border-spacing-0.5 text-center text-xs">
+              <table className="w-full border-separate border-spacing-[3px] text-center text-sm">
                 <thead>
                   <tr>
-                    <th className="w-16 text-[0.65rem] font-medium text-white/40">
+                    <th className="w-14 text-xs font-medium text-white/40">
                       Hand
                     </th>
                     {UPCARDS.map((u) => (
-                      <th key={u} className="font-semibold text-white/70">
+                      <th key={u} className="text-xs font-semibold text-white/60">
                         {upcardLabel(u)}
                       </th>
                     ))}
@@ -75,13 +75,13 @@ export function StrategyChart({ onClose }: { onClose: () => void }) {
                 <tbody>
                   {section.rows.map((row) => (
                     <tr key={row.label}>
-                      <td className="whitespace-nowrap pr-1.5 text-right text-[0.7rem] font-medium text-white/60">
+                      <td className="whitespace-nowrap pr-2 text-right text-xs font-medium text-white/55">
                         {row.label}
                       </td>
                       {row.actions.map((a, i) => (
                         <td
                           key={i}
-                          className="rounded px-1 py-1 font-bold text-white"
+                          className="rounded px-1 py-1.5 font-semibold text-white/95"
                           style={{ backgroundColor: ACTION_COLOURS[a] }}
                         >
                           {ACTION_LABELS[a]}

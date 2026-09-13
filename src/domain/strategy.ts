@@ -167,11 +167,19 @@ function demoteDouble(action: Action, cards: Card[]): Action {
 }
 
 /** Colour coding for the chart overlay, matching the source chart's key. */
+/**
+ * Chart cell colours.
+ *
+ * Deliberately muted rather than the source chart's primaries: the overlay
+ * sits over a dark felt table, and saturated red/green at this density reads
+ * as an alert rather than a reference. Hue still carries the meaning, so the
+ * chart remains scannable at a glance.
+ */
 export const ACTION_COLOURS: Record<Action, string> = {
-  hit: '#22a44e',
-  stand: '#e8112d',
-  double: '#eda32c',
-  split: '#1f7ae0',
+  hit: '#3f8f5f',
+  stand: '#a33a45',
+  double: '#b98432',
+  split: '#3f6ea8',
 };
 
 export const ACTION_LABELS: Record<Action, string> = {
