@@ -48,3 +48,21 @@ export function trueCountFromShoe(running: number, shoe: Shoe): number {
 export function estimatedDecksRemaining(shoe: Shoe): number {
   return Math.max(0.5, Math.round(decksRemaining(shoe) * 2) / 2);
 }
+
+/**
+ * Whether a submitted true count should be accepted.
+ *
+ * Deliberately tolerant by one. At the table you estimate decks remaining by
+ * eye, and the quotient often sits near a rounding boundary - running 9 over
+ * "about 2 decks" is 4.5, which a careful counter may call 4 or 5 depending on
+ * whether they read the discard tray as slightly over or under. Demanding an
+ * exact match marks correct counting wrong and teaches false precision.
+ *
+ * What matters for play decisions is the magnitude and the sign, both of which
+ * a +/-1 answer preserves.
+ */
+export const COUNT_TOLERANCE = 1;
+
+export function isCountAcceptable(guess: number, actual: number): boolean {
+  return Math.abs(guess - actual) <= COUNT_TOLERANCE;
+}

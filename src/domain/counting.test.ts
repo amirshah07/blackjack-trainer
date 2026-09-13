@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { countValue, runningCount, trueCount, estimatedDecksRemaining, updateRunningCount } from './counting';
+import { countValue, runningCount, trueCount, estimatedDecksRemaining, updateRunningCount, isCountAcceptable, COUNT_TOLERANCE } from './counting';
 import { createShoe, deal } from './deck';
 import type { Card, Rank } from './cards';
 
@@ -75,5 +75,47 @@ describe('estimatedDecksRemaining', () => {
   it('never returns zero', () => {
     const shoe = { ...createShoe(1), cards: [] };
     expect(estimatedDecksRemaining(shoe)).toBe(0.5);
+  });
+});
+
+describe('isCountAcceptable', () => {
+  it('accepts an exact answer', () => {
+    expect(isCountAcceptable(4, 4)).toBe(true);
+    expect(isCountAcceptable(-3, -3)).toBe(true);
+    expect(isCountAcceptable(0, 0)).toBe(true);
+  });
+
+  it('accepts being off by one either way', () => {
+    // Decks remaining is estimated by eye, so the quotient often sits near a
+    // rounding boundary and two answers are both defensible.
+    expect(isCountAcceptable(3, 4)).toBe(true);
+    expect(isCountAcceptable(5, 4)).toBe(true);
+    expect(isCountAcceptable(-2, -3)).toBe(true);
+  });
+
+  it('rejects being off by two or more', () => {
+    expect(isCountAcceptable(2, 4)).toBe(false);
+    expect(isCountAcceptable(6, 4)).toBe(false);
+    expect(isCountAcceptable(0, 5)).toBe(false);
+  });
+
+  it('rejects a sign error, which changes the play', () => {
+    // +3 and -3 are opposite betting decisions; that is never "close enough".
+    expect(isCountAcceptable(3, -3)).toBe(false);
+    expect(isCountAcceptable(-4, 4)).toBe(false);
+  });
+
+  it('is symmetric', () => {
+    for (let a = -8; a <= 8; a++) {
+      for (let b = -8; b <= 8; b++) {
+        expect(isCountAcceptable(a, b)).toBe(isCountAcceptable(b, a));
+      }
+    }
+  });
+
+  it('matches the documented tolerance', () => {
+    expect(COUNT_TOLERANCE).toBe(1);
+    expect(isCountAcceptable(0, COUNT_TOLERANCE)).toBe(true);
+    expect(isCountAcceptable(0, COUNT_TOLERANCE + 1)).toBe(false);
   });
 });
