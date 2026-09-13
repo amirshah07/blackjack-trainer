@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { createReducer, initialState, completeDeal, completeSeats, completeDealer } from './reducer';
-import { DEFAULT_CONFIG, MIN_BET, STARTING_BANKROLL, type GameState, type GameAction } from './types';
+import {
+  DEFAULT_CONFIG, MIN_BET, STARTING_BANKROLL,
+  CHECK_INTERVAL_MIN, CHECK_INTERVAL_MAX,
+  type GameState, type GameAction,
+} from './types';
 import { runningCount } from '@/domain/counting';
 import { canDeal } from './selectors';
 import { handValue } from '@/domain/hand';
@@ -296,12 +300,12 @@ describe('live mode bankroll', () => {
 describe('count check-ins (counting mode)', () => {
   it('pauses for an estimate at the scheduled hand', () => {
     let s = initialState('counting', DEFAULT_CONFIG, seededRng());
-    expect(s.nextCheckAt).toBeGreaterThanOrEqual(8);
-    expect(s.nextCheckAt).toBeLessThanOrEqual(15);
+    expect(s.nextCheckAt).toBeGreaterThanOrEqual(CHECK_INTERVAL_MIN);
+    expect(s.nextCheckAt).toBeLessThanOrEqual(CHECK_INTERVAL_MAX);
 
     for (let i = 0; i < 20 && s.phase !== 'countCheck'; i++) s = playHandStanding(s);
     expect(s.phase).toBe('countCheck');
-    expect(s.handsPlayed).toBeGreaterThanOrEqual(8);
+    expect(s.handsPlayed).toBeGreaterThanOrEqual(CHECK_INTERVAL_MIN);
   });
 
   it('grades the estimate and reveals the breakdown', () => {
@@ -316,13 +320,13 @@ describe('count check-ins (counting mode)', () => {
     expect(graded.phase).toBe('resolved');
   });
 
-  it('schedules the next check 8-15 hands out', () => {
+  it('schedules the next check within the configured range', () => {
     let s = initialState('counting', DEFAULT_CONFIG, seededRng());
     for (let i = 0; i < 20 && s.phase !== 'countCheck'; i++) s = playHandStanding(s);
     const before = s.handsPlayed;
     const after = reduce(s, { type: 'SUBMIT_COUNT', guess: 0 });
-    expect(after.nextCheckAt - before).toBeGreaterThanOrEqual(8);
-    expect(after.nextCheckAt - before).toBeLessThanOrEqual(15);
+    expect(after.nextCheckAt - before).toBeGreaterThanOrEqual(CHECK_INTERVAL_MIN);
+    expect(after.nextCheckAt - before).toBeLessThanOrEqual(CHECK_INTERVAL_MAX);
   });
 
   it('never pauses in basic or live mode', () => {

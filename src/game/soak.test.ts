@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { createReducer, initialState, completeDeal, completeSeats, completeDealer } from './reducer';
-import { DEFAULT_CONFIG, MIN_BET, type GameState, type Mode } from './types';
+import {
+  DEFAULT_CONFIG, MIN_BET, CHECK_INTERVAL_MIN, CHECK_INTERVAL_MAX,
+  type GameState, type Mode,
+} from './types';
 import { CARDS_PER_DECK } from '@/domain/deck';
 
 function seededRng(seed: number) {
@@ -110,8 +113,8 @@ describe('soak - state machine stability', () => {
       if (s.phase === 'settlement') s = reduce(s, { type: 'SETTLE' });
       if (s.phase === 'countCheck') { checks++; s = reduce(s, { type: 'SUBMIT_COUNT', guess: 0 }); }
     }
-    // ~100 hands at one check every 8-15 hands.
-    expect(checks).toBeGreaterThanOrEqual(6);
-    expect(checks).toBeLessThanOrEqual(13);
+    // Derived from the configured range so this stays correct if it changes.
+    expect(checks).toBeGreaterThanOrEqual(Math.floor(100 / CHECK_INTERVAL_MAX) - 1);
+    expect(checks).toBeLessThanOrEqual(Math.ceil(100 / CHECK_INTERVAL_MIN) + 1);
   });
 });

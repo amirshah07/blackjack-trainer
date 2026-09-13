@@ -53,9 +53,15 @@ export const MIN_BET = 10;
 /** Hands cannot re-split past this many. */
 export const MAX_HANDS = 4;
 
-/** Count check-ins fire at a random interval in this inclusive range. */
-export const CHECK_INTERVAL_MIN = 8;
-export const CHECK_INTERVAL_MAX = 15;
+/**
+ * Count check-ins fire after a random number of hands in this inclusive range,
+ * re-rolled after each check so the timing cannot be anticipated.
+ *
+ * Kept deliberately short: cards are dealt one at a time, so a single hand is
+ * ~10-20 seconds and a wider range would leave minutes between checks.
+ */
+export const CHECK_INTERVAL_MIN = 2;
+export const CHECK_INTERVAL_MAX = 4;
 
 /**
  * One slot in the opening deal. The table is dealt a card at a time, in
