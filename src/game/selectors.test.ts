@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { handLabel, legalActions, canDeal, dealerVisibleLabel } from './selectors';
+import { handLabel, legalActions, canDeal, dealerVisibleLabel, stakeAtRisk } from './selectors';
 import { initialState, createReducer, completeDeal, completeSeats, completeDealer } from './reducer';
 import { DEFAULT_CONFIG, emptyHand, MIN_BET, type GameState, type Hand } from './types';
 import type { Card, Rank } from '@/domain/cards';
@@ -143,5 +143,69 @@ describe('dealer label never leaks the hole card', () => {
       if (s.phase === 'dealerTurn') s = completeDealer(s, reduce);
       if (s.phase === 'settlement') s = reduce(s, { type: 'SETTLE' });
     }
+  });
+});
+
+describe('stakeAtRisk', () => {
+  function live(over: Partial<GameState> = {}): GameState {
+    return { ...initialState('live', DEFAULT_CONFIG, rng()), ...over };
+  }
+
+  it('is the chips in the circle before the deal', () => {
+    expect(stakeAtRisk(live({ currentBet: 50, playerHands: [] }))).toBe(50);
+  });
+
+  it('follows the hand once it is live, not the cleared currentBet', () => {
+    // currentBet is zeroed at the deal; the stake lives on the hand.
+    const s = live({ phase: 'playerTurn', currentBet: 0, playerHands: [hand(['10', '6'], { bet: 25 })] });
+    expect(stakeAtRisk(s)).toBe(25);
+  });
+
+  it('doubles when the hand is doubled', () => {
+    const s = live({
+      phase: 'playerTurn',
+      currentBet: 0,
+      playerHands: [hand(['5', '6', '9'], { bet: 50, status: 'doubled' })],
+    });
+    expect(stakeAtRisk(s), 'doubling did not raise the displayed stake').toBe(50);
+  });
+
+  it('sums the stakes across split hands', () => {
+    const s = live({
+      phase: 'playerTurn',
+      currentBet: 0,
+      playerHands: [
+        hand(['8', '3'], { bet: 25, fromSplit: true }),
+        hand(['8', '9'], { bet: 25, fromSplit: true }),
+      ],
+    });
+    expect(stakeAtRisk(s)).toBe(50);
+  });
+
+  it('is empty once the hand has settled', () => {
+    // The stake has been paid out, so nothing is at risk. Showing the old
+    // amount leaves chips on the felt while Deal is disabled, which reads as
+    // a stuck table.
+    const s = live({
+      phase: 'resolved',
+      currentBet: 0,
+      playerHands: [hand(['5', '6', '9'], { bet: 50, status: 'doubled', outcome: 'win' })],
+    });
+    expect(stakeAtRisk(s), 'stale stake left on the felt after settlement').toBe(0);
+  });
+
+  it('shows a freshly placed bet while between hands', () => {
+    // The previous hand's cards are still on the table, but a new bet is in.
+    const s = live({
+      phase: 'resolved',
+      currentBet: 25,
+      playerHands: [hand(['5', '6', '9'], { bet: 50, outcome: 'win' })],
+    });
+    expect(stakeAtRisk(s)).toBe(25);
+  });
+
+  it('is zero outside live mode', () => {
+    const s = { ...initialState('basic', DEFAULT_CONFIG, rng()), currentBet: 50 };
+    expect(stakeAtRisk(s)).toBe(0);
   });
 });

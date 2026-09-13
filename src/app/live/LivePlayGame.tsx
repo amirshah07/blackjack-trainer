@@ -3,7 +3,7 @@
 import { useEffect, useCallback, useState } from 'react';
 import { useGame } from '@/game/useGame';
 import { useConfig } from '@/game/useConfig';
-import { legalActions, canDeal } from '@/game/selectors';
+import { legalActions, canDeal, stakeAtRisk } from '@/game/selectors';
 import { DENOMINATIONS } from '@/game/chips';
 import { MIN_BET, STARTING_BANKROLL, type Action } from '@/game/types';
 import { Table } from '@/components/Table';
@@ -13,6 +13,7 @@ import { StrategyChart } from '@/components/StrategyChart';
 import { ChartButton } from '@/components/ChartButton';
 import { Chip } from '@/components/Chip';
 import { ChipStack, BetCircle } from '@/components/ChipStack';
+import { DiscardTray } from '@/components/DiscardTray';
 
 /**
  * Live Play is a sandbox, by design: free betting with no evaluation, no
@@ -81,7 +82,19 @@ export function LivePlayGame() {
       title="Live Play"
       aside={<ChartButton onClick={() => setChartOpen(true)} />}
     >
-      <Table state={state} betSlot={<BetCircle amount={state.currentBet} />} />
+      <div className="flex items-start justify-center gap-4">
+        <div className="min-w-0 flex-1">
+          <Table state={state} betSlot={<BetCircle amount={stakeAtRisk(state)} />} />
+        </div>
+        {/*
+          Shoe depth matters here too: bets are meant to be sized off the
+          count, which needs decks remaining. Same tray as the counting drill -
+          settled cards only, judged by eye, no figures.
+        */}
+        <div className="shrink-0 pt-6">
+          <DiscardTray dealt={state.discardCount} total={state.config.numDecks * 52} />
+        </div>
+      </div>
 
       <div className="flex min-h-[7rem] flex-col items-center justify-center gap-3">
         {state.phase === 'playerTurn' ? (

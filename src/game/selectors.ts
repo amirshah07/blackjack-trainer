@@ -65,6 +65,28 @@ export function canDeal(state: GameState): boolean {
   return true;
 }
 
+/**
+ * The stake actually at risk right now.
+ *
+ * Before the deal that is the chips in the circle; once a hand is live the
+ * stake moves onto the hand itself, and doubling or splitting changes it.
+ * Reading `currentBet` alone shows an empty circle mid-hand and misses a
+ * double, so the felt disagrees with what the player has committed.
+ */
+export function stakeAtRisk(state: GameState): number {
+  if (state.mode !== 'live') return 0;
+
+  // Once a hand is settled the stake has been paid out, so nothing is at
+  // risk. Leaving the old amount on the felt shows chips in the circle while
+  // Deal is disabled, which reads as a stuck table.
+  if (state.phase === 'resolved' || state.phase === 'betting' || state.phase === 'idle') {
+    return state.currentBet;
+  }
+
+  const onHands = state.playerHands.reduce((sum, h) => sum + h.bet, 0);
+  return onHands > 0 ? onHands : state.currentBet;
+}
+
 /** Chip denominations affordable from the current bankroll. */
 export function affordableChips(state: GameState, denominations: number[]): number[] {
   return denominations.filter((d) => d <= state.bankroll);
