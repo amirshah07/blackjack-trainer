@@ -25,14 +25,14 @@ export function ChipStack({ amount, label, layout = 'stack' }: ChipStackProps) {
           {chips.map((c, i) =>
             layout === 'stack' ? (
               <div
-                key={i}
+                key={`${i}-${c}`}
                 className="absolute left-0"
                 style={{ bottom: `${i * 7}px`, zIndex: i }}
               >
-                <Chip value={c} size={44} index={i} />
+                <Chip value={c} size={44} index={0} />
               </div>
             ) : (
-              <Chip key={i} value={c} size={38} index={i} />
+              <Chip key={`${i}-${c}`} value={c} size={38} index={0} />
             ),
           )}
         </div>
@@ -45,13 +45,28 @@ export function ChipStack({ amount, label, layout = 'stack' }: ChipStackProps) {
 
 /** The felt circle a bet is placed into. */
 export function BetCircle({ amount }: { amount: number }) {
+  const chips = toChips(amount, 999);
+
   return (
-    <div className="flex h-24 w-24 flex-col items-center justify-center rounded-full border-2 border-dashed border-amber-200/30">
+    <div className="flex h-28 w-32 flex-col items-center justify-center rounded-full border-2 border-dashed border-amber-200/30">
       {amount > 0 ? (
         <>
-          <div className="flex -space-x-5">
-            {toChips(amount, 6).map((c, i) => (
-              <Chip key={i} value={c} size={34} index={i} />
+          {/*
+            No disc cap: truncating the stack makes the felt show less than the
+            bet beside it ($205 drawn as six discs reads $195). Larger stacks
+            overlap more tightly instead, so they stay inside the circle.
+          */}
+          <div className={chips.length > 5 ? 'flex -space-x-4' : 'flex -space-x-3'}>
+            {chips.map((c, i) => (
+              // index={0} everywhere: the bet responds to a click, so no chip
+              // should wait its turn to become visible. The key includes the
+              // value so a chip only re-animates when it genuinely changes.
+              <Chip
+                key={`${i}-${c}`}
+                value={c}
+                size={chips.length > 5 ? 26 : 32}
+                index={0}
+              />
             ))}
           </div>
           <p className="mt-1 text-xs font-semibold tabular-nums text-amber-100">
