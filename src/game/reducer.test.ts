@@ -981,3 +981,77 @@ describe('play-out is paced one card at a time (regression)', () => {
     }
   });
 });
+
+describe('count reveal survives the next hand (regression)', () => {
+  it('keeps the check on screen while the drill deals on', () => {
+    // The drill auto-starts the next hand ~1.4s after settlement. If NEW_HAND
+    // clears lastCountCheck, the reveal is torn off screen while the user is
+    // still reading it - which no toast duration can fix.
+    const r = createReducer(seededRng(83));
+    let s = initialState('counting', DEFAULT_CONFIG, seededRng(83));
+
+    for (let i = 0; i < 30; i++) {
+      s = completeDeal(r(s, { type: 'NEW_HAND' }), r);
+      s = completeSeats(s, r);
+      s = completeDealer(s, r);
+      if (s.phase === 'settlement') s = r(s, { type: 'SETTLE' });
+
+      if (s.phase === 'countCheck') {
+        s = r(s, { type: 'SUBMIT_COUNT', guess: 12345 });
+        expect(s.lastCountCheck).not.toBeNull();
+        const check = s.lastCountCheck;
+
+        // Start the next hand - the reveal must still be there.
+        s = r(s, { type: 'NEW_HAND' });
+        expect(s.lastCountCheck, 'new hand wiped the count reveal').toBe(check);
+
+        s = completeDeal(s, r);
+        expect(s.lastCountCheck, 'dealing wiped the count reveal').toBe(check);
+        return;
+      }
+    }
+    throw new Error('no count check occurred');
+  });
+
+  it('is cleared only by an explicit dismiss', () => {
+    const r = createReducer(seededRng(89));
+    let s = initialState('counting', DEFAULT_CONFIG, seededRng(89));
+
+    for (let i = 0; i < 30; i++) {
+      s = completeDeal(r(s, { type: 'NEW_HAND' }), r);
+      s = completeSeats(s, r);
+      s = completeDealer(s, r);
+      if (s.phase === 'settlement') s = r(s, { type: 'SETTLE' });
+
+      if (s.phase === 'countCheck') {
+        s = r(s, { type: 'SUBMIT_COUNT', guess: 0 });
+        expect(s.lastCountCheck).not.toBeNull();
+        s = r(s, { type: 'DISMISS_COUNT_CHECK' });
+        expect(s.lastCountCheck).toBeNull();
+        return;
+      }
+    }
+    throw new Error('no count check occurred');
+  });
+
+  it('replaces the previous check rather than showing a stale one', () => {
+    const r = createReducer(seededRng(97));
+    let s = initialState('counting', DEFAULT_CONFIG, seededRng(97));
+    const seen: unknown[] = [];
+
+    for (let i = 0; i < 40 && seen.length < 2; i++) {
+      s = completeDeal(r(s, { type: 'NEW_HAND' }), r);
+      s = completeSeats(s, r);
+      s = completeDealer(s, r);
+      if (s.phase === 'settlement') s = r(s, { type: 'SETTLE' });
+      if (s.phase === 'countCheck') {
+        // Deliberately do NOT dismiss - the next check must still replace it.
+        s = r(s, { type: 'SUBMIT_COUNT', guess: 4242 });
+        seen.push(s.lastCountCheck);
+      }
+    }
+
+    expect(seen).toHaveLength(2);
+    expect(seen[0]).not.toBe(seen[1]); // a fresh object, so the UI re-renders
+  });
+});

@@ -177,7 +177,13 @@ function startNewHand(state: GameState, rng: Rng): GameState {
     dealQueue: buildDealQueue(seats.map((s) => s.id)),
     phase: 'dealing',
     lastDecision: null,
-    lastCountCheck: null,
+    /**
+     * lastCountCheck deliberately survives into the next hand.
+     *
+     * The drill deals continuously, so clearing it here would tear the reveal
+     * off screen a second later - the user is still reading the breakdown
+     * while the next hand goes out. Only DISMISS_COUNT_CHECK clears it.
+     */
   };
 }
 
