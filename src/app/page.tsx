@@ -73,7 +73,7 @@ export default function StartScreen() {
       <header>
         <h1 className="text-3xl font-bold tracking-tight">Blackjack Trainer</h1>
         <p className="mt-1.5 text-sm text-white/60">
-          Dealer stands on soft 17 · double after split allowed · no surrender
+          dealer stands on soft 17 · double after split allowed · no surrender
         </p>
       </header>
 

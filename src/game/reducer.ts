@@ -2,7 +2,7 @@ import { createShuffledShoe, deal, needsReshuffle } from '@/domain/deck';
 import { handValue, isBlackjack, isBust, canSplit, canDouble } from '@/domain/hand';
 import { dealerShouldHit, settle, PAYOUT } from '@/domain/rules';
 import { getCorrectAction, upcardValue } from '@/domain/strategy';
-import { updateRunningCount, trueCount, estimatedDecksRemaining } from '@/domain/counting';
+import { updateRunningCount, trueCount, estimatedDecksRemaining, isCountAcceptable } from '@/domain/counting';
 import { botAction } from '@/domain/bot';
 import {
   emptyHand, DEFAULT_CONFIG, STARTING_BANKROLL, MIN_BET, MAX_HANDS,
@@ -556,7 +556,7 @@ function submitCount(state: GameState, guess: number, rng: Rng): GameState {
     lastCountCheck: {
       guess,
       actual,
-      wasCorrect: guess === actual,
+      wasCorrect: isCountAcceptable(guess, actual),
       running: state.runningCount,
       decksRemaining: decksLeft,
     },

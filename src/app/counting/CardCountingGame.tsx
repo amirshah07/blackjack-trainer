@@ -9,6 +9,7 @@ import { Toast } from '@/components/Toast';
 import { StatsPanel } from '@/components/StatsPanel';
 import { TableFrame } from '@/components/TableFrame';
 import { CountCheckModal } from '@/components/CountCheckModal';
+import { DiscardTray } from '@/components/DiscardTray';
 import { BETWEEN_HANDS_MS } from '@/game/types';
 
 export function CardCountingGame() {
@@ -21,6 +22,18 @@ export function CardCountingGame() {
   useEffect(() => setTally(getStats('counting')), []);
 
   const check = state.lastCountCheck;
+
+  /**
+   * The tray shows SETTLED cards only, never the hand in progress.
+   *
+   * A dealer sweeps the round into the tray after the hand is paid, so cards
+   * still on the felt are not in it yet. Using live shoe depth instead would
+   * also leak the hand in progress: the bar would creep up as each card came
+   * out, and a check-in landing mid-hand would reflect a half-played round
+   * rather than a clean shoe position.
+   */
+  const totalCards = state.config.numDecks * 52;
+  const cardsDiscarded = state.discardCount;
 
   // Log each check exactly once, keyed on the check object identity.
   useEffect(() => {
@@ -71,7 +84,19 @@ export function CardCountingGame() {
       title="Card Counting"
       aside={<StatsPanel tally={tally} label="Correct counts" onReset={handleReset} />}
     >
-      <Table state={state} />
+      <div className="flex items-start justify-center gap-4">
+        <div className="min-w-0 flex-1">
+          <Table state={state} />
+        </div>
+        {/*
+          Shoe depth has to be visible somewhere, or "running count / decks
+          remaining" asks the user to divide by a number they cannot know.
+          The tray shows it the way a table does - by eye, no figures.
+        */}
+        <div className="shrink-0 pt-6">
+          <DiscardTray dealt={cardsDiscarded} total={totalCards} />
+        </div>
+      </div>
 
       <div className="flex min-h-[4.5rem] flex-col items-center justify-center gap-3">
         <button
@@ -100,7 +125,9 @@ export function CardCountingGame() {
           kind={check.wasCorrect ? 'correct' : 'wrong'}
           title={
             check.wasCorrect
-              ? `Correct — true count is ${check.actual}`
+              ? check.guess === check.actual
+                ? `Correct — true count is ${check.actual}`
+                : `Close enough — true count is ${check.actual}, you said ${check.guess}`
               : `Wrong — true count is ${check.actual}, you said ${check.guess}`
           }
           detail={
@@ -108,6 +135,14 @@ export function CardCountingGame() {
               ? undefined
               : `Running count is ${check.running}, decks remaining is ${check.decksRemaining}, so true count is ${check.actual}.`
           }
+          /*
+           * A wrong count stays up until dismissed. The breakdown is three
+           * numbers and a conclusion to work through, and the drill keeps
+           * dealing behind it - any fixed timeout either cuts off a careful
+           * reader or outstays a quick one. Correct answers are a glance, so
+           * they still clear themselves.
+           */
+          duration={check.wasCorrect ? 3500 : null}
           onDismiss={game.dismissCountCheck}
         />
       )}

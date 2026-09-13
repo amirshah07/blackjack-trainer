@@ -41,7 +41,7 @@ export function StrategyChart({ onClose }: { onClose: () => void }) {
           <div>
             <h2 className="text-lg font-semibold">Basic strategy</h2>
             <p className="text-xs text-white/50">
-              Dealer stands on soft 17 · double after split allowed · no surrender
+              dealer stands on soft 17 · double after split allowed · no surrender
             </p>
           </div>
           <button

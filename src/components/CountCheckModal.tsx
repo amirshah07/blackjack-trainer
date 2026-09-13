@@ -48,7 +48,7 @@ export function CountCheckModal({ onSubmit }: CountCheckModalProps) {
           onChange={(e) => setValue(e.target.value)}
           placeholder="0"
           aria-label="True count estimate"
-          className="mt-4 w-full rounded-lg bg-black/40 px-4 py-3 text-center text-2xl font-semibold tabular-nums text-white outline-none ring-1 ring-white/15 focus:ring-2 focus:ring-amber-300"
+          className="no-spinner mt-4 w-full rounded-lg bg-black/40 px-4 py-3 text-center text-2xl font-semibold tabular-nums text-white outline-none ring-1 ring-white/15 focus:ring-2 focus:ring-amber-300"
         />
 
         <button
