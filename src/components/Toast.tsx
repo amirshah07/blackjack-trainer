@@ -58,9 +58,8 @@ export function Toast({ kind, title, detail, onDismiss, duration }: ToastProps) 
         ].join(' ')}
       >
         <div className="flex items-start gap-2.5">
-          <span aria-hidden className="mt-0.5 text-lg leading-none">
-            {correct ? '✓' : '✕'}
-          </span>
+          {/* No status glyph: the colour already carries correct/wrong, and a
+              leading ✕ reads as a second close button next to the real one. */}
           <div className="min-w-0">
             <p className="font-semibold leading-snug">{title}</p>
             {detail && (
@@ -82,7 +81,6 @@ export function Toast({ kind, title, detail, onDismiss, duration }: ToastProps) 
             className="mt-3 w-full rounded-lg bg-white/15 px-3 py-2 text-sm font-semibold text-white transition hover:bg-white/25"
           >
             Got it
-            <span className="ml-1.5 font-normal text-white/60">(Esc)</span>
           </button>
         )}
       </div>

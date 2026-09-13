@@ -57,6 +57,19 @@ export function CardCountingGame() {
 
   useEffect(() => {
     if (!running) return;
+
+    /**
+     * Hold the table while a WRONG reveal is on screen.
+     *
+     * The breakdown is there to be studied, and cards flowing behind it both
+     * distract from the reading and push the count on before the user has
+     * finished with the last one. Dealing resumes the moment it is dismissed.
+     *
+     * A correct answer is a glance and clears itself, so it does not stall
+     * the drill.
+     */
+    if (check && !check.wasCorrect) return;
+
     // Only start the next hand from a terminal phase; useGame drives the
     // dealing/seats/dealer/settlement steps on its own timer.
     const terminal = state.phase === 'idle' || state.phase === 'resolved';
@@ -64,7 +77,7 @@ export function CardCountingGame() {
 
     const t = setTimeout(() => newHandRef.current(), BETWEEN_HANDS_MS);
     return () => clearTimeout(t);
-  }, [running, state.phase, state.handsPlayed]);
+  }, [running, state.phase, state.handsPlayed, check]);
 
   // A check-in interrupts the loop until it is answered.
   const paused = state.phase === 'countCheck';
