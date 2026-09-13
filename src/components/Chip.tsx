@@ -3,7 +3,7 @@
 import { memo } from 'react';
 
 const CHIP_STYLE: Record<number, { face: string; edge: string; ink: string }> = {
-  10:  { face: '#c02537', edge: '#8c1526', ink: '#fff' },  // red
+  10:  { face: '#1f5fbf', edge: '#123f80', ink: '#fff' },  // blue
   25:  { face: '#1f7a4d', edge: '#0f5636', ink: '#fff' }, // green
   100: { face: '#1a1a1e', edge: '#000000', ink: '#fff' },  // black
 };
@@ -27,7 +27,11 @@ function ChipImpl({ value, size = 44, index = 0, onClick, disabled }: ChipProps)
       height={size}
       viewBox="0 0 48 48"
       className="chip-slide drop-shadow-md"
-      style={{ animationDelay: `${index * 60}ms` }}
+      // A delay holds the chip at opacity 0 (animation-fill-mode: backwards),
+      // so a staggered chip is invisible until its turn. Only stagger where
+      // the sequence is worth seeing; a chip the user just clicked appears at
+      // once.
+      style={index > 0 ? { animationDelay: `${index * 60}ms` } : undefined}
       aria-label={`$${value} chip`}
       role="img"
     >
