@@ -1,9 +1,10 @@
 import { Suspense } from 'react';
+import { LoadingScreen } from '@/components/Spinner';
 import { BasicStrategyGame } from './BasicStrategyGame';
 
 export default function BasicStrategyPage() {
   return (
-    <Suspense fallback={<main className="p-8 text-white/50">Loading…</main>}>
+    <Suspense fallback={<LoadingScreen />}>
       <BasicStrategyGame />
     </Suspense>
   );
